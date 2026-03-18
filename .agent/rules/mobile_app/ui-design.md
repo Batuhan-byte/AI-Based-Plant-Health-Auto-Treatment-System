@@ -15,23 +15,32 @@ Tasarımın omurgasını iki unsur oluşturur:
 1.  **Zemin ve Yapı (Modern & Clean):** Ekran arkaplanları ve içerik kartları son derece sade, ferah, saf beyaz ve en açık gri tonlardadır.
 2.  **Etkileşim ve Aksiyon (Botanic):** Menüler, butonlar, ikonlar ve durum bildirimleri, temanın doğasını (bitki sağlığı) yansıtan toprak, yaprak ve pastel yeryüzü tonlarındadır.
 
-## 2. Renk Paleti (Color Palette)
+## 2. Renk Paleti (Color Palette - Dark/Light Theme Support)
 
-Aşağıdaki renkler UI inşasında kullanılacak yegâne standart renk kodlarıdır:
+**DİKKAT:** Uygulamaya *Dark Mod (Karanlık Tema)* desteği eklendiği için artık hiçbir CSS / StyleSheet içerisinde doğrudan `#HEX` renk kodu yazılamaz! Tüm renkler dinamik olarak `useColorScheme` kullanılarak `src/theme/colors.js` dosyasındaki değerlerden beslenmelidir.
+
+### Örnek Kullanım:
+```javascript
+import { useColorScheme } from 'react-native';
+import { Colors } from '../theme/colors';
+
+// Komponent içerisinde:
+const isDark = useColorScheme() === 'dark';
+const colors = isDark ? Colors.dark : Colors.light;
+
+// backgroundColor: colors.background // gibi kullanılmalıdır.
+```
 
 ### Zemin ve Metin Renkleri (Modern Foundation)
-*   **Ana Arka Plan (Background):** `#F5F5F7` (Çok Açık Modern Gri/Krem - Sayfaların ana gövdesi, ferahlık veren zemin).
-*   **Kart Arka Planı (Card Surface):** `#FFFFFF` (Saf Beyaz - Arka plandan sıyrılarak üstte okunaklı duracak tüm kutular ve panolar için).
-*   **Birincil Siyah Metin (Text Main):** `#1A1A1D` (Koyu Füme/Siyah - Okunabilirliği yüksek ana başlıklar ve standart yazılar).
-*   **İkincil / Kısık Metin (Text Muted):** `#8E8E93` (Orta Gri - Tarih, açıklama metni, pasif alt yazılar).
-*   **Pasif İkon Grisi:** `#C7C7CC` (Listelerdeki veya menülerdeki kapalı/aktif olmayan alanlar).
+*   **Ana Arka Plan (Background):** `colors.background` (Aydınlıkta: `#F5F5F7`, Karanlıkta: Deep Dark `#121212`)
+*   **Kart Arka Planı (Card Surface):** `colors.card` (Aydınlıkta: `#FFFFFF`, Karanlıkta: `#1C1C1E`)
+*   **Birincil Siyah Metin (Text Main):** `colors.textMain` (Aydınlıkta Koyu Füme, Karanlıkta Saf Beyaz)
+*   **İkincil / Kısık Metin (Text Muted):** `colors.textMuted` (İki modda da soft gri)
+*   **Pasif İkon Grisi:** `colors.navInactive`
 
 ### Butonlar ve Vurgu Renkleri (Botanic Accents)
-*   **Ana Botanik Vurgu (Primary Accent):** `#648754` (Koyu/Orta Zeytin Yeşili - Aktif menü butonları, Ana filiz ikonu, bildirim noktaları, tıklandığında beliren aktif "See all" gibi yazılar için ana aksiyon rengimiz budur).
-*   **İkon Arka Planı 1 (Şeftali / Toprak):** `#EEDCCB` (Sulama, ödemeler gibi konulara atanabilecek ikon kutu arkası pastel).
-*   **İkon Arka Planı 2 (Nane / Açık Yeşil):** `#E1EAD8` (Detay, analiz, genel sağlığa dair ikon kutu arkası pastel).
-*   **İkon Arka Planı 3 (Mercan / Somon):** `#EFCFC3` (Premium alışveriş, yeni bitki ekleme).
-*   **İkon Arka Planı 4 (Açık Mavi / Buz):** `#DCE9E9` (Duraklatma, soğutma veya hava durumu ile alakalı konularda).
+*   **Ana Botanik Vurgu (Primary Accent):** `colors.accent` (Koyu/Orta Zeytin Yeşili - Tüm modlarda aktif ikon ve vurgular)
+*   **İkon Arka Planları (Pastel Earth Tones):** Sulama (`iconWaterBg`), Analiz (`iconAnalyzeBg`), Yeni Bitki (`iconNewBg`) ve Duraklatma (`iconPauseBg`) renkleri karanlık modda daha kontrastlı hale gelmek için yine `colors` objesinden çekilmelidir.
 
 ## 3. Tipografi ve Metin Düzeni (Typography)
 
@@ -49,7 +58,7 @@ Tasarımımızda hiçbir zaman tam sivri ve keskin dikdörtgenler bulunmaz. Sist
 *   **Hızlı Aksiyon (Küçük Yuvarlak) Butonları:** `width: 60`, `height: 60`, yarı çap `borderRadius: 30` (Tam Daire)
 *   **Log / Standart Liste Satırı (List Item):** `borderRadius: 20`
 *   **Liste İçi Küçük İkon Kutusu:** `width: 50`, `height: 50`, ufak kalın kare formu `borderRadius: 14`
-*   **Tabana Yaslı Alt Menü (Docked Tab Bar):** Sadece üst köşeler kavisli `borderTopLeftRadius: 20`, `borderTopRightRadius: 20` (Havada uçan (floating) tasarım Android edge-to-edge hatalarından dolayı iptal edilmiştir. Bar ekranın bittiği yere güvenle raptiye edilir). Sadece Merkez-Aksiyon Butonu barın içinden `-25px` yukarı taşarak 3D bir hissiyat yaratır.
+*   **Tabana Yaslı Alt Menü (Docked Tab Bar):** Sadece üst köşeler kavisli `borderTopLeftRadius: 20`, `borderTopRightRadius: 20` olarak tasarlanır, havada uçan yapıdan kaçınılır. **iOS Özelleştirmesi:** Apple'ın en alt sürükleme çizgisindeki devasa boşluğu engellemek için iOS'ta `height` ve özel `paddingBottom` ile manuel ince (slim) sınırlar çizilir. Ortasındaki Merkez-Aksiyon Butonu ince hatlı barın içinden `-20px` yukarı taşarak 3D bir hissiyat yaratır ve üzerinde `camera-outline` gibi içi boş ince lüks ikonlar barındırır.
 
 ## 5. Gölgelendirme Prensipleri (Shadow System)
 
@@ -72,6 +81,21 @@ Zemin açık (krem, beyaz) olduğu için 3D derinlik vizyonu gölgelerle verilir
 
 *   **SafeAreaView:** Telefon cihaz çentiklerini, saati ve şarj barını koruyan kök kapsayıcı daima `flex: 1`, `backgroundColor: '#F5F5F7'` olmak zorundadır. Android Çentik (Notch) koruması için `paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0` kuralı esastır.
 *   **Boyut (ScrollView) Padding Ayarları:** Alt menü ekranın dışına çıkarak süzülen (floating) yapıda DEĞİLDİR, doğal bir şekilde (native) ekran zemininde başlar. Liste ve ScrollView elemanlarının içerik genel padding'i standart `20` birimdir. Fakat listenin sonuna gelindiğinde menü ile listenin son elemanı arasına nefes payı açmak için `paddingBottom: 40` (veya daha fazlası) verilmesi her zaman Premium hissiyatını güçlendirir.
+
+## 7. Temalar Arası Geçiş Animasyonları (Theme Transitions)
+
+Karanlık ve aydınlık temalar arasında (kullanıcı veya sistem tetiklemeli) geçiş yapılırken JS Frame döngüsünü tıkayan (kasma hissi veren) state ve opacity gecikmeleri (Örn: Animated kütüphanesi) yerine **mutlaka** GPU ivmeli, saf native `LayoutAnimation` modülü (sadece opacity değişimi izlenerek) kullanılacaktır.
+
+```javascript
+// Doğru ve kasmayan Crossfade geçiş örneği:
+const customAnimation = {
+    duration: 400,
+    create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+    update: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+};
+LayoutAnimation.configureNext(customAnimation);
+// Ardından state güncellenir
+```
 
 ---
 *(Not: AI destekli tüm yeni kod türetim süreçlerinde önce bu dosyaya bakılarak komponent ve sayfalar tasarlanmalı ve "Hybrid Botanical Clean UI" stil zinciri asla koparılmamalıdır!)*

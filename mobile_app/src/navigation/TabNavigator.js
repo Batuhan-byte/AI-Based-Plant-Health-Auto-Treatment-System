@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Colors } from '../theme/colors';
+import { useTheme } from '../theme/ThemeContext';
 
 import MyPlantsScreen from '../screens/MyPlantsScreen';
 import CommunityScreen from '../screens/CommunityScreen';
@@ -11,7 +13,7 @@ import CameraScreen from '../screens/CameraScreen';
 
 const Tab = createBottomTabNavigator();
 
-const CustomTabBarButton = ({ children, onPress }) => (
+const CustomTabBarButton = ({ children, onPress, styles }) => (
     <TouchableOpacity
         style={styles.customTabBarButtonContainer}
         onPress={onPress}
@@ -24,21 +26,21 @@ const CustomTabBarButton = ({ children, onPress }) => (
 );
 
 export default function TabNavigator() {
+    const { theme } = useTheme();
+    const isDark = theme === 'dark';
+    const colors = isDark ? Colors.dark : Colors.light;
+
+    const styles = useMemo(() => getDynamicStyles(colors), [colors]);
+
     return (
         <Tab.Navigator
             screenOptions={{
                 headerShown: false,
                 tabBarShowLabel: false, // İsimler kapalı
                 tabBarStyle: styles.tabBar,
-                tabBarActiveTintColor: '#648754', // Botanik Yeşil (Aktif)
-                tabBarInactiveTintColor: '#CFCFCF', // Açık Gri (Pasif)
-                tabBarItemStyle: {
-                    // Ekstra paddingler iptal edildi, ikonlar otomatik dikey ortalanacak
-                    paddingTop: 0, 
-                    paddingBottom: 0,
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                }
+                tabBarActiveTintColor: colors.accent, // Aktif (Örn: Botanik Yeşil)
+                tabBarInactiveTintColor: colors.navInactive, // Pasif (Örn: Açık veya Koyu Gri)
+                // Cihazın kendi hesaplayıcısını (Safe Area) bozmamak için zorunlu yükseklik/ortalamalar kaldırıldı
             }}
         >
             <Tab.Screen
@@ -60,16 +62,16 @@ export default function TabNavigator() {
                 }}
             />
             
-            {/* Merkezdeki Vurgulu Buton */}
+            {/* Merkez Vurgulu Buton */}
             <Tab.Screen
                 name="CenterAction"
                 component={CameraScreen}
                 options={{
                     tabBarIcon: () => (
-                        <MaterialCommunityIcons name="sprout" color="#FFFFFF" size={34} />
+                        <MaterialCommunityIcons name="camera-outline" color="#FFFFFF" size={30} />
                     ),
                     tabBarButton: (props) => (
-                        <CustomTabBarButton {...props} />
+                        <CustomTabBarButton {...props} styles={styles} />
                     )
                 }}
             />
@@ -96,26 +98,27 @@ export default function TabNavigator() {
     );
 }
 
-const styles = StyleSheet.create({
+const getDynamicStyles = (colors) => StyleSheet.create({
     tabBar: {
-        // En alt kısma tamamen yaslı / sıfır oturur
-        backgroundColor: '#FFFFFF',
-        height: Platform.OS === 'ios' ? 85 : 70, // Doğal yüksekliği
-        borderTopWidth: 0, // Üst çizgiyi kaldır
-        borderTopRightRadius: 20, // Üst köşelere hafif yumuşaklık
+        backgroundColor: colors.card,
+        // iOS için o gereksiz devasa devasa siyah boşluğu kesiyoruz, Android'i kendi haline bırakıp hafif düzeltiyoruz
+        height: Platform.OS === 'ios' ? 70 : 65,  
+        paddingBottom: Platform.OS === 'ios' ? 20 : 5, 
+        paddingTop: Platform.OS === 'ios' ? 10 : 5, 
+        borderTopWidth: 0,
+        borderTopRightRadius: 20, 
         borderTopLeftRadius: 20,
-        // Dışarı taşan ince gölge:
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor,
         shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.05,
+        shadowOpacity: colors.background === '#121212' ? 0.3 : 0.05, // Daha belirgin karanlık gölge
         shadowRadius: 10,
         elevation: 10, 
     },
     customTabBarButtonContainer: {
-        top: -25, // Ortadaki yuvarlağı dışarı/yukarı taşır
+        top: -20, // Çubuk inceldiği için oranlı kalması adına taşırma payı ufaltıldı
         justifyContent: 'center',
         alignItems: 'center',
-        shadowColor: '#648754',
+        shadowColor: colors.accent,
         shadowOffset: { width: 0, height: 6 },
         shadowOpacity: 0.3,
         shadowRadius: 10,
@@ -124,8 +127,8 @@ const styles = StyleSheet.create({
     customTabBarButton: {
         width: 66,
         height: 66,
-        borderRadius: 33, // Tam yuvarlak yapı
-        backgroundColor: '#648754', // Botanik Yeşil arka plan
+        borderRadius: 33,
+        backgroundColor: colors.accent,
         justifyContent: 'center',
         alignItems: 'center',
     }
