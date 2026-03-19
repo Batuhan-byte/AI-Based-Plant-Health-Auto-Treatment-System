@@ -39,6 +39,19 @@
             "backgroundColor": "#000000"
           }
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "PlantHealth, bitki türünüzü tanımak ve hastalıkları yapay zeka ile teşhis edebilmek için kameranıza erişim iznine ihtiyaç duyar.",
+          "microphonePermission": "PlantHealth videolar için mikrofona ihtiyaç duyar."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "PlantHealth, daha önce galerinizde kayıtlı olan bir bitki yaprağı fotoğrafını analiz edebilmek için fotoğraf kitaplığınıza erişim talep eder."
+        }
       ]
     ],
     "experiments": {

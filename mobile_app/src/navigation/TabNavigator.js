@@ -17,7 +17,7 @@ const CustomTabBarButton = ({ children, onPress, styles }) => (
     <TouchableOpacity
         style={styles.customTabBarButtonContainer}
         onPress={onPress}
-        activeOpacity={0.8}
+        activeOpacity={1}
     >
         <View style={styles.customTabBarButton}>
             {children}
@@ -62,10 +62,10 @@ export default function TabNavigator() {
                 }}
             />
             
-            {/* Merkez Vurgulu Buton */}
+            {/* Merkez Vurgulu Buton (Alt Çubuğu Gizleyecek Kök Kamera Ekranına Yönlendirir) */}
             <Tab.Screen
                 name="CenterAction"
-                component={CameraScreen}
+                component={View} // Ekrana hiçbir şey render edilmez, e.preventDefault ile iptal edilir çünkü
                 options={{
                     tabBarIcon: () => (
                         <MaterialCommunityIcons name="camera-outline" color="#FFFFFF" size={30} />
@@ -74,6 +74,14 @@ export default function TabNavigator() {
                         <CustomTabBarButton {...props} styles={styles} />
                     )
                 }}
+                listeners={({ navigation }) => ({
+                    tabPress: (e) => {
+                        // Varsayılan geçişi iptal et (böylece alt menü çubuğu içeren ekranda kalmazsınız)
+                        e.preventDefault();
+                        // Alt menünün en tepesinde olan ana 'Camera' sayfasına Push et (kaydırarak geri gelinir)
+                        navigation.navigate('Camera');
+                    }
+                })}
             />
 
             <Tab.Screen
@@ -118,11 +126,6 @@ const getDynamicStyles = (colors) => StyleSheet.create({
         top: -20, // Çubuk inceldiği için oranlı kalması adına taşırma payı ufaltıldı
         justifyContent: 'center',
         alignItems: 'center',
-        shadowColor: colors.accent,
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.3,
-        shadowRadius: 10,
-        elevation: 8,
     },
     customTabBarButton: {
         width: 66,

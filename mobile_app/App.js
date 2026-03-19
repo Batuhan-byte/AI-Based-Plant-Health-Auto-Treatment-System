@@ -8,6 +8,7 @@ import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 // Ekranları içeri aktar
 import TabNavigator from './src/navigation/TabNavigator';
 import CameraScreen from './src/screens/CameraScreen';
+import DiagnosisResultScreen from './src/screens/DiagnosisResultScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -39,7 +40,12 @@ function AppContent() {
                 <Stack.Screen
                     name="Camera"
                     component={CameraScreen}
-                    options={{ title: 'Hastalık Teşhisi', headerShown: true }}
+                    options={{ headerShown: false }}
+                />
+                <Stack.Screen
+                    name="DiagnosisResult"
+                    component={DiagnosisResultScreen}
+                    options={{ headerShown: false, animation: 'slide_from_bottom' }}
                 />
             </Stack.Navigator>
         </NavigationContainer>
