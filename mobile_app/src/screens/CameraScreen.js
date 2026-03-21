@@ -1,5 +1,6 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Platform, StatusBar, Dimensions, Image, Alert, Linking, ActivityIndicator } from 'react-native';
+import Constants from 'expo-constants';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
@@ -28,8 +29,10 @@ export default function CameraScreen({ navigation }) {
 
     const cameraRef = useRef(null);
 
-    // Backend API URL (Fiziksel cihaz için bilgisayarın WiFi IP adresi)
-    const API_BASE = 'http://192.168.1.12:3000';
+    // Backend API URL (Otomatik IP Tespiti)
+    const hostUri = Constants.expoConfig?.hostUri;
+    const ip = hostUri ? hostUri.split(':').shift() : 'localhost';
+    const API_BASE = `http://${ip}:3000`;
 
     // İzin isteme fonksiyonu - tek seferlik deneyin ardından Ayarlara Git moduna geç
     async function handlePermissionRequest() {
