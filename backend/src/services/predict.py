@@ -148,14 +148,19 @@ def predict():
         print(json.dumps({
             "basarili": True,
             "sonuclar": results,
-            "debug_image": debug_base64
+            "debug_image": debug_base64,
+            "rembg_active": REMBG_AVAILABLE
         }))
+        
+        # Kritik: Başarılı bittiğinde 0 dönmesini garanti et (Kütüphane kalıntı hatalarını ezmek için)
+        sys.exit(0)
 
     except Exception as e:
         print(json.dumps({
             "basarili": False,
             "hata": str(e)
         }))
+        sys.exit(1)
 
 if __name__ == "__main__":
     predict()

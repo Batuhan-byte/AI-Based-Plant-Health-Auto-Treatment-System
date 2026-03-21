@@ -101,7 +101,7 @@ export default function MyPlantsScreen() {
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
                 <View style={[styles.paddedSection, styles.header]}>
-                    <Text style={styles.headerTitle}>My Antigravtye Botanics</Text>
+                    <Text style={styles.headerTitle}>My Antigravity Botanics</Text>
                     <View style={styles.headerIconsRow}>
                         <TouchableOpacity style={styles.themeToggleContainer} onPress={toggleTheme}>
                             <MaterialCommunityIcons

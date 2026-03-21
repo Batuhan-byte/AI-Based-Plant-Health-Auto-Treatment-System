@@ -152,6 +152,7 @@ async function predict(imageBuffer) {
         // 1. Önce .env dosyasındaki PYTHON_PATH (Varsa)
         // 2. Yoksa sistemdeki 'python' komutu
         const pythonExecutable = process.env.PYTHON_PATH || 'python';
+        console.log(`🔍 Using Python: ${pythonExecutable}`);
         
         // Komut: <python> predict.py <model_yolu> <resim_yolu> <etiket_yolu>
         const pythonProcess = spawn(pythonExecutable, [
@@ -179,10 +180,11 @@ async function predict(imageBuffer) {
             }
 
             if (code !== 0) {
-                console.error("Python Hatası:", errorData);
+                console.error("Python Hatası (stderr):", errorData);
                 return resolve({
                     basarili: false,
-                    hata: "Python betiği hatası. Lütfen terminalden Python kütüphanelerinin (tensorflow, pillow, numpy) kurulu olduğundan emin olun."
+                    hata: "Python betiği hatası. " + errorData.substring(0, 100),
+                    detay: "Lütfen Python (tensorflow, pillow, numpy, rembg) kurulu olduğundan emin olun."
                 });
             }
 

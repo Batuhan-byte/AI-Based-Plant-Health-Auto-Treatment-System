@@ -29,7 +29,7 @@ export default function CameraScreen({ navigation }) {
     const cameraRef = useRef(null);
 
     // Backend API URL (Fiziksel cihaz için bilgisayarın WiFi IP adresi)
-    const API_BASE = 'http://192.168.1.8:3000';
+    const API_BASE = 'http://192.168.1.12:3000';
 
     // İzin isteme fonksiyonu - tek seferlik deneyin ardından Ayarlara Git moduna geç
     async function handlePermissionRequest() {
