@@ -148,11 +148,12 @@ async function predict(imageBuffer) {
 
         const { spawn } = require('child_process');
         
-        // Windows MAX_PATH limiti (260 char) sorununu aşmak için özel kurulmuş 
-        // kısa yollu (C:\v) sanal ortamındaki Python'u kullanıyoruz.
-        const pythonExecutable = 'C:\\v\\venv\\Scripts\\python.exe';
+        // Python çalıştırılabilir yolunu belirle: 
+        // 1. Önce .env dosyasındaki PYTHON_PATH (Varsa)
+        // 2. Yoksa sistemdeki 'python' komutu
+        const pythonExecutable = process.env.PYTHON_PATH || 'python';
         
-        // Komut: python.exe predict.py <model_yolu> <resim_yolu> <etiket_yolu>
+        // Komut: <python> predict.py <model_yolu> <resim_yolu> <etiket_yolu>
         const pythonProcess = spawn(pythonExecutable, [
             scriptPath,
             TFLITE_PATH,
