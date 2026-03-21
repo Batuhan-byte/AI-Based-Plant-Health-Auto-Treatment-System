@@ -140,9 +140,15 @@ def predict():
                 "oran": oran
             })
 
+        # DEBUG: Base64 formatında resmi döndür (Uygulama tarafında görmek için)
+        import base64
+        with open(debug_path, "rb") as debug_file:
+            debug_base64 = base64.b64encode(debug_file.read()).decode('utf-8')
+
         print(json.dumps({
             "basarili": True,
-            "sonuclar": results
+            "sonuclar": results,
+            "debug_image": debug_base64
         }))
 
     except Exception as e:

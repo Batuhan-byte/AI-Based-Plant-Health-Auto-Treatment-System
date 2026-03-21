@@ -52,7 +52,7 @@ async function startServer() {
     }
 
     // 2. Express sunucusunu başlat
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
         console.log(`\n🚀 Sunucu http://localhost:${PORT} adresinde çalışıyor`);
         console.log(`📡 API Endpoint'leri:`);
         console.log(`   POST /api/diagnose  → Fotoğraf yükle ve teşhis al`);

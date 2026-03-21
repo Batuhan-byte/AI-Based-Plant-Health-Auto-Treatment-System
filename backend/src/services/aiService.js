@@ -220,7 +220,8 @@ async function predict(imageBuffer) {
                         etiket: item.etiket,
                         ...parseLabel(item.etiket),
                         oran: parseFloat((item.oran * 100).toFixed(1))
-                    }))
+                    })),
+                    debug_image: parsedResult.debug_image // İşlenmiş Base64 resim buraya eklendi
                 });
 
             } catch (err) {
