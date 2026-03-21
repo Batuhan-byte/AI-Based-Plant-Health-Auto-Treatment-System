@@ -19,7 +19,12 @@ async function diagnose(req, res) {
         // AI Servisini çağır
         const result = await aiService.predict(req.file.buffer);
 
-        console.log(`🌿 Tahmin: ${result.tahmin.bitki} - ${result.tahmin.hastalik} (%${(result.tahmin.guvenOrani * 100).toFixed(1)})`);
+        if (!result.basarili) {
+            console.log(`⚠️ Teşhis Başarısız: ${result.hata}`);
+            return res.json(result);
+        }
+
+        console.log(`🌿 Tahmin: ${result.tahmin.bitki} - ${result.tahmin.hastalik} (%${result.tahmin.guvenOrani})`);
 
         return res.json(result);
     } catch (error) {

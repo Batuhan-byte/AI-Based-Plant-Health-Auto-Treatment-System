@@ -78,8 +78,8 @@ async function loadModel() {
 
 /**
  * Görüntüyü 224x224 boyutuna resize eder ve piksel verilerini 
- * MobileNet standardına göre [-1, 1] aralığına normalize eder.
- * Formül: (pixel / 127.5) - 1.0
+ * 0-255 aralığında (normalize etmeden) Float32 formatına dönüştürür.
+ * (Modelin içindeki entegre preprocessing katmanına uygun olarak)
  */
 async function preprocessImage(imageBuffer) {
     // Sharp ile 224x224'e resize et ve raw RGB pikselleri al
@@ -89,10 +89,11 @@ async function preprocessImage(imageBuffer) {
         .raw()               // Raw pixel verileri
         .toBuffer({ resolveWithObject: true });
 
-    // Float32Array'e dönüştür ve MobileNet normalizasyonu uygula
+    // Float32Array'e dönüştür ve doğrudan 0-255 pixel değerlerini at
+    // DİKKAT: Model içinde preprocess olduğundan /255 işlemi yapılmaz!
     const float32Data = new Float32Array(224 * 224 * 3);
     for (let i = 0; i < data.length; i++) {
-        float32Data[i] = (data[i] / 127.5) - 1.0; // [-1, 1] aralığı
+        float32Data[i] = data[i]; // Direkt ham (0-255) değeri al
     }
 
     // TensorFlow.js tensor'üne çevir [1, 224, 224, 3] (batch=1)
@@ -135,56 +136,98 @@ async function predict(imageBuffer) {
         throw new Error('Model henüz yüklenmedi. Lütfen sunucuyu yeniden başlatın.');
     }
 
-    // 1. Görüntüyü preprocess et (224x224, [-1,1])
-    const inputTensor = await preprocessImage(imageBuffer);
+    // NOT: Node.js üzerinden saf .tflite desteklenmediği için, oluşturduğumuz predict.py dosyasını Python ile çalıştırıyoruz.
+    return new Promise((resolve, reject) => {
+        // Görüntüyü geçici bir dosyaya kaydet
+        const fs = require('fs');
+        const path = require('path');
+        const tempImagePath = path.join(__dirname, '..', '..', 'tmp_predict.jpg');
+        const scriptPath = path.join(__dirname, 'predict.py');
+        
+        fs.writeFileSync(tempImagePath, imageBuffer);
 
-    let predictions;
-    
-    /*
-     * NOT: Pure JavaScript tfjs, .tflite dosyasını doğrudan çalıştıramaz.
-     * Gerçek üretim ortamında iki seçenek vardır:
-     * 1. Modeli Python ile tfjs formatına (model.json + shard dosyaları) dönüştürüp tf.loadGraphModel() kullanmak
-     * 2. Python (Flask) sunucusu ile tflite_runtime kullanmak
-     * 
-     * Şimdilik preprocess pipeline'ını doğrulamak için simülasyon kullanılıyor.
-     */
-    console.log('🧠 Görüntü normalize edildi (224x224, [-1,1]). Model inference çalışıyor...');
-    
-    // Simülasyon: Rastgele ama tutarlı tahmin üret (model dönüşümü sonrası gerçek inference ile değiştirilecek)
-    predictions = new Float32Array(labels.length);
-    const randomIdx = Math.floor(Math.random() * labels.length);
-    for (let i = 0; i < labels.length; i++) {
-        predictions[i] = i === randomIdx ? 0.85 + Math.random() * 0.14 : Math.random() * 0.05;
-    }
+        const { spawn } = require('child_process');
+        
+        // Windows MAX_PATH limiti (260 char) sorununu aşmak için özel kurulmuş 
+        // kısa yollu (C:\v) sanal ortamındaki Python'u kullanıyoruz.
+        const pythonExecutable = 'C:\\v\\venv\\Scripts\\python.exe';
+        
+        // Komut: python.exe predict.py <model_yolu> <resim_yolu> <etiket_yolu>
+        const pythonProcess = spawn(pythonExecutable, [
+            scriptPath,
+            TFLITE_PATH,
+            tempImagePath,
+            LABELS_PATH
+        ]);
 
-    // Tensor'ü temizle (bellek sızıntısını önle)
-    inputTensor.dispose();
+        let resultData = '';
+        let errorData = '';
 
-    // 3. En yüksek olasılıklı sonuçları sırala
-    const indexed = Array.from(predictions).map((v, i) => ({ index: i, oran: v }));
-    indexed.sort((a, b) => b.oran - a.oran);
-    const top5 = indexed.slice(0, 5);
+        pythonProcess.stdout.on('data', (data) => {
+            resultData += data.toString();
+        });
 
-    // 4. Birincil tahmin
-    const bestMatch = top5[0];
-    const bestLabel = labels[bestMatch.index];
-    const parsed = parseLabel(bestLabel);
+        pythonProcess.stderr.on('data', (data) => {
+            errorData += data.toString();
+        });
 
-    return {
-        basarili: true,
-        tahmin: {
-            etiket: bestLabel,
-            bitki: parsed.bitki,
-            hastalik: parsed.hastalik,
-            saglikli: parsed.saglikli,
-            guvenOrani: parseFloat(bestMatch.oran.toFixed(4))
-        },
-        topEnSonuclar: top5.map(item => ({
-            etiket: labels[item.index],
-            ...parseLabel(labels[item.index]),
-            oran: parseFloat(item.oran.toFixed(4))
-        }))
-    };
+        pythonProcess.on('close', (code) => {
+            // İşi biten geçici resmi sil
+            if (fs.existsSync(tempImagePath)) {
+                fs.unlinkSync(tempImagePath);
+            }
+
+            if (code !== 0) {
+                console.error("Python Hatası:", errorData);
+                return resolve({
+                    basarili: false,
+                    hata: "Python betiği hatası. Lütfen terminalden Python kütüphanelerinin (tensorflow, pillow, numpy) kurulu olduğundan emin olun."
+                });
+            }
+
+            try {
+                // Python'dan JSON olarak dönen veriyi parse et
+                const parsedResult = JSON.parse(resultData);
+                if (!parsedResult.basarili) {
+                    return resolve({ basarili: false, hata: parsedResult.hata });
+                }
+
+                // Python 5 sonuç dönecek, bunlar topEnSonuclar
+                const top5 = parsedResult.sonuclar;
+                const bestMatch = top5[0];
+                const bestLabel = bestMatch.etiket;
+                const parsed = parseLabel(bestLabel);
+
+                // Kural: Confidence 0.50'nin altındaysa sonuç gösterme, tekrar çekilmesini iste
+                if (bestMatch.oran < 0.50) {
+                    return resolve({
+                        basarili: false,
+                        hata: "Emin değilim. Lütfen yaprağı tam merkeze alarak (arka plan sade olacak şekilde) net bir fotoğraf çekin."
+                    });
+                }
+
+                resolve({
+                    basarili: true,
+                    tahmin: {
+                        etiket: bestLabel,
+                        bitki: parsed.bitki,
+                        hastalik: parsed.hastalik,
+                        saglikli: parsed.saglikli,
+                        guvenOrani: parseFloat((bestMatch.oran * 100).toFixed(1))
+                    },
+                    topEnSonuclar: top5.map(item => ({
+                        etiket: item.etiket,
+                        ...parseLabel(item.etiket),
+                        oran: parseFloat((item.oran * 100).toFixed(1))
+                    }))
+                });
+
+            } catch (err) {
+                console.error("JSON Parse Hatası (Python çıktısı):", resultData);
+                resolve({ basarili: false, hata: "Python çıktısı anlaşılamadı." });
+            }
+        });
+    });
 }
 
 /**

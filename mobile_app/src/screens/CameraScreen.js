@@ -142,20 +142,44 @@ export default function CameraScreen({ navigation }) {
         }
     }
 
-    // AI Modeline uygun 224x224 İşleme (Preprocess)
+    // AI Modeline uygun Center Crop + 224x224 İşleme (Preprocess)
     async function preprocessImageForAI(uri) {
         try {
-            // 1. İşlem: Görüntüyü 224x224 boyutuna kırp / sıkıştır (Modelin Input Size'ı)
-            const manipResult = await ImageManipulator.manipulateAsync(
+            // Fotoğrafın gerçek piksel boyutlarını al
+            const imageSize = await new Promise((resolve, reject) => {
+                Image.getSize(uri, (w, h) => resolve({ width: w, height: h }), reject);
+            });
+
+            // CENTER CROP: Vizör çerçevesine uygun olarak merkezi kırp
+            // Arka planın büyük bölümünü keserek domain shift sorununu azaltır
+            const cropW = Math.floor(imageSize.width * 0.85);
+            const cropH = Math.floor(imageSize.height * 0.85);
+            const originX = Math.floor((imageSize.width - cropW) / 2);
+            const originY = Math.floor((imageSize.height - cropH) / 2);
+
+            const result = await ImageManipulator.manipulateAsync(
                 uri,
-                [{ resize: { width: 224, height: 224 } }],
+                [
+                    { crop: { originX, originY, width: cropW, height: cropH } },
+                    { resize: { width: 224, height: 224 } }
+                ],
                 { format: ImageManipulator.SaveFormat.JPEG, compress: 1, base64: true }
             );
-            
-            return manipResult; // manipResult.uri ve manipResult.base64 içerir
+
+            return result;
         } catch (error) {
-            console.error("Görüntü işlenirken hata oluştu:", error);
-            return null;
+            // Center crop hata verirse direkt resize'a düş
+            console.warn("Center crop başarısız, direkt resize:", error.message);
+            try {
+                return await ImageManipulator.manipulateAsync(
+                    uri,
+                    [{ resize: { width: 224, height: 224 } }],
+                    { format: ImageManipulator.SaveFormat.JPEG, compress: 1, base64: true }
+                );
+            } catch (e2) {
+                console.error("Görüntü işlenirken hata:", e2);
+                return null;
+            }
         }
     }
 
