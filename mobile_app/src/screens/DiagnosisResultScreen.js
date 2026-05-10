@@ -14,20 +14,13 @@ export default function DiagnosisResultScreen({ route, navigation }) {
     const insets = useSafeAreaInsets();
     const styles = useMemo(() => getDynamicStyles(colors, isDark), [colors, isDark]);
 
-    // Route'dan gelen veriler
+    // Route'dan gelen veriler (yeni 3 katmanlı pipeline formatı)
     const { result, photoUri } = route.params || {};
     const tahmin = result?.tahmin || {};
-    const topSonuclar = result?.topEnSonuclar || [];
-    const guvenYuzde = ((tahmin.guvenOrani || 0) * 100).toFixed(1);
+    const k1 = result?.katman1_yaprak || {};
+    const k2 = result?.katman2_bitki || {};
+    const k3 = result?.katman3_hastalik || {};
 
-    // Sağlık durumu renk ve ikon haritası
-    const isHealthy = tahmin.saglikli;
-    const statusColor = isHealthy ? '#34C759' : '#FF3B30';
-    const statusBg = isHealthy 
-        ? (isDark ? 'rgba(52, 199, 89, 0.15)' : 'rgba(52, 199, 89, 0.1)')
-        : (isDark ? 'rgba(255, 59, 48, 0.15)' : 'rgba(255, 59, 48, 0.1)');
-    const statusIcon = isHealthy ? 'check-circle' : 'alert-circle';
-    const statusText = isHealthy ? 'Sağlıklı Bitki' : 'Hastalık Tespit Edildi';
 
     return (
         <View style={[styles.container, { paddingTop: insets.top > 0 ? insets.top : (Platform.OS === 'android' ? StatusBar.currentHeight : 20) }]}>
@@ -38,7 +31,7 @@ export default function DiagnosisResultScreen({ route, navigation }) {
                     <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
                         <MaterialCommunityIcons name="arrow-left" size={24} color={colors.textMain} />
                     </TouchableOpacity>
-                    <Text style={styles.topTitle}>Teşhis Sonucu</Text>
+                    <Text style={styles.topTitle}>Analiz Sonucu</Text>
                     <View style={{ width: 44 }} />
                 </View>
 
@@ -49,72 +42,202 @@ export default function DiagnosisResultScreen({ route, navigation }) {
                     </View>
                 )}
 
-                {/* Durum Göstergesi */}
-                <View style={[styles.statusBanner, { backgroundColor: statusBg, borderColor: statusColor }]}>
-                    <MaterialCommunityIcons name={statusIcon} size={28} color={statusColor} />
-                    <View style={styles.statusTextWrap}>
-                        <Text style={[styles.statusTitle, { color: statusColor }]}>{statusText}</Text>
-                        <Text style={styles.statusSub}>Güven Oranı: %{guvenYuzde}</Text>
-                    </View>
-                </View>
+                {/* ═══ Pipeline Sonuç Kartları ═══ */}
 
-                {/* Ana Teşhis Kartı */}
-                <View style={styles.mainCard}>
-                    <View style={styles.cardHeader}>
-                        <MaterialCommunityIcons name="leaf" size={24} color={colors.accent} />
-                        <Text style={styles.cardTitle}>Bitki Bilgisi</Text>
-                    </View>
-                    <View style={styles.cardRow}>
-                        <Text style={styles.cardLabel}>Bitki Türü</Text>
-                        <Text style={styles.cardValue}>{tahmin.bitki || '-'}</Text>
-                    </View>
-                    <View style={styles.divider} />
-                    <View style={styles.cardRow}>
-                        <Text style={styles.cardLabel}>Teşhis</Text>
-                        <Text style={[styles.cardValue, !isHealthy && { color: '#FF3B30' }]}>
-                            {tahmin.hastalik || '-'}
-                        </Text>
-                    </View>
-                    <View style={styles.divider} />
-                    <View style={styles.cardRow}>
-                        <Text style={styles.cardLabel}>Model Etiketi</Text>
-                        <Text style={[styles.cardValue, { fontSize: 13, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }]}>
-                            {tahmin.etiket || '-'}
-                        </Text>
-                    </View>
-                </View>
-
-                {/* Top 5 Olasılık */}
-                {topSonuclar.length > 0 && (
-                    <View style={styles.mainCard}>
-                        <View style={styles.cardHeader}>
-                            <MaterialCommunityIcons name="chart-bar" size={24} color={colors.accent} />
-                            <Text style={styles.cardTitle}>Olasılık Dağılımı</Text>
+                {/* Katman 1: Yaprak Tespiti */}
+                <View style={styles.pipelineCard}>
+                    <View style={styles.pipelineHeader}>
+                        <View style={[styles.pipelineIconBox, { backgroundColor: '#34C75920' }]}>  
+                            <MaterialCommunityIcons name="image-search-outline" size={22} color="#34C759" />
                         </View>
-                        {topSonuclar.map((item, index) => {
-                            const yuzde = (item.oran * 100).toFixed(1);
-                            const barWidth = Math.max(item.oran * 100, 2); // Min %2 genişlik
-                            return (
-                                <View key={index} style={styles.probRow}>
-                                    <View style={styles.probLabelWrap}>
-                                        <Text style={styles.probIndex}>#{index + 1}</Text>
-                                        <View>
-                                            <Text style={styles.probName} numberOfLines={1}>{item.bitki}</Text>
-                                            <Text style={styles.probDisease} numberOfLines={1}>{item.hastalik}</Text>
+                        <View style={styles.pipelineHeaderText}>
+                            <Text style={styles.pipelineTitle}>Katman 1 — Yaprak Tespiti</Text>
+                            <Text style={styles.pipelineSubtitle}>YOLO Object Detection</Text>
+                        </View>
+                        <View style={[styles.statusBadge, { backgroundColor: k1.tespit_edildi ? '#34C75920' : '#FF3B3020' }]}>
+                            <MaterialCommunityIcons 
+                                name={k1.tespit_edildi ? "check-circle" : "close-circle"} 
+                                size={16} 
+                                color={k1.tespit_edildi ? '#34C759' : '#FF3B30'} 
+                            />
+                            <Text style={[styles.statusBadgeText, { color: k1.tespit_edildi ? '#34C759' : '#FF3B30' }]}>
+                                {k1.tespit_edildi ? 'Bulundu' : 'Bulunamadı'}
+                            </Text>
+                        </View>
+                    </View>
+                    {k1.tespit_edildi && (
+                        <View style={styles.pipelineDetails}>
+                            <View style={styles.detailRow}>
+                                <Text style={styles.detailLabel}>Güven Oranı</Text>
+                                <Text style={styles.detailValue}>%{k1.confidence}</Text>
+                            </View>
+                            <View style={styles.detailRow}>
+                                <Text style={styles.detailLabel}>Toplam Yaprak</Text>
+                                <Text style={styles.detailValue}>{k1.toplam_tespit} adet</Text>
+                            </View>
+                        </View>
+                    )}
+                </View>
+
+                {/* Katman 2: Bitki Türü */}
+                <View style={styles.pipelineCard}>
+                    <View style={styles.pipelineHeader}>
+                        <View style={[styles.pipelineIconBox, { backgroundColor: '#007AFF20' }]}>
+                            <MaterialCommunityIcons name="leaf" size={22} color="#007AFF" />
+                        </View>
+                        <View style={styles.pipelineHeaderText}>
+                            <Text style={styles.pipelineTitle}>Katman 2 — Bitki Türü</Text>
+                            <Text style={styles.pipelineSubtitle}>MobileNet Sınıflandırma</Text>
+                        </View>
+                    </View>
+                    <View style={styles.bitkiSonuc}>
+                        <Text style={styles.bitkiAdi}>{k2.tur_tr || tahmin.bitki || '—'}</Text>
+                        <Text style={styles.bitkiKey}>{k2.tur || tahmin.bitki_key || ''}</Text>
+                    </View>
+                    {/* Top 3 Bitki Türü */}
+                    {(k2.top3 && k2.top3.length > 0) ? (
+                        <View style={styles.top3Container}>
+                            {k2.top3.map((item, index) => (
+                                <View key={index} style={styles.top3Row}>
+                                    <Text style={[styles.top3Label, index === 0 && styles.top3LabelBold]}>{item.tur_tr}</Text>
+                                    <View style={styles.top3BarWrapper}>
+                                        <View style={styles.confidenceTrack}>
+                                            <View style={[styles.confidenceFill, { 
+                                                width: `${Math.min(item.confidence || 0, 100)}%`,
+                                                backgroundColor: index === 0 
+                                                    ? ((item.confidence || 0) > 80 ? '#34C759' : (item.confidence || 0) > 60 ? '#FF9500' : '#FF3B30')
+                                                    : '#888'
+                                            }]} />
                                         </View>
+                                        <Text style={[styles.top3Percent, index === 0 && styles.top3PercentBold]}>%{item.confidence}</Text>
                                     </View>
-                                    <View style={styles.probBarBg}>
-                                        <View style={[styles.probBarFill, { 
-                                            width: `${barWidth}%`, 
-                                            backgroundColor: index === 0 ? colors.accent : (isDark ? '#444' : '#D1D1D6')
+                                </View>
+                            ))}
+                        </View>
+                    ) : (
+                        <View style={styles.confidenceBar}>
+                            <View style={styles.confidenceTrack}>
+                                <View style={[styles.confidenceFill, { 
+                                    width: `${Math.min(k2.confidence || 0, 100)}%`,
+                                    backgroundColor: (k2.confidence || 0) > 80 ? '#34C759' : (k2.confidence || 0) > 60 ? '#FF9500' : '#FF3B30'
+                                }]} />
+                            </View>
+                            <Text style={styles.confidenceText}>%{k2.confidence || 0}</Text>
+                        </View>
+                    )}
+                </View>
+
+                {/* Katman 3: Hastalık Tespiti */}
+                <View style={[styles.pipelineCard, k3.durum === 'model_yok' && styles.pipelineCardInactive]}>
+                    <View style={styles.pipelineHeader}>
+                        <View style={[styles.pipelineIconBox, { backgroundColor: 
+                            k3.durum === 'tespit_edildi' 
+                                ? (k3.saglikli ? '#34C75920' : '#FF3B3020')
+                                : '#FF950020' 
+                        }]}>
+                            <MaterialCommunityIcons 
+                                name={
+                                    k3.durum === 'tespit_edildi' 
+                                        ? (k3.saglikli ? 'shield-check' : 'alert-circle')
+                                        : 'flask-outline'
+                                } 
+                                size={22} 
+                                color={
+                                    k3.durum === 'tespit_edildi'
+                                        ? (k3.saglikli ? '#34C759' : '#FF3B30')
+                                        : '#FF9500'
+                                } 
+                            />
+                        </View>
+                        <View style={styles.pipelineHeaderText}>
+                            <Text style={styles.pipelineTitle}>Katman 3 — Hastalık Tespiti</Text>
+                            <Text style={styles.pipelineSubtitle}>Disease Classification</Text>
+                        </View>
+                        {k3.durum === 'tespit_edildi' && (
+                            <View style={[styles.statusBadge, { backgroundColor: k3.saglikli ? '#34C75920' : '#FF3B3020' }]}>
+                                <MaterialCommunityIcons 
+                                    name={k3.saglikli ? "check-circle" : "alert-circle"} 
+                                    size={16} 
+                                    color={k3.saglikli ? '#34C759' : '#FF3B30'} 
+                                />
+                                <Text style={[styles.statusBadgeText, { color: k3.saglikli ? '#34C759' : '#FF3B30' }]}>
+                                    {k3.saglikli ? 'Sağlıklı' : 'Hastalık'}
+                                </Text>
+                            </View>
+                        )}
+                    </View>
+
+                    {k3.durum === 'tespit_edildi' ? (
+                        <View>
+                            <View style={styles.bitkiSonuc}>
+                                <Text style={[styles.bitkiAdi, { color: k3.saglikli ? '#34C759' : '#FF3B30' }]}>
+                                    {k3.hastalik_tr || 'Bilinmiyor'}
+                                </Text>
+                                <Text style={styles.bitkiKey}>{k3.hastalik || ''}</Text>
+                            </View>
+                            {/* Top 3 Hastalık */}
+                            {(k3.top3 && k3.top3.length > 0) ? (
+                                <View style={styles.top3Container}>
+                                    {k3.top3.map((item, index) => {
+                                        const isSaglikli = item.hastalik?.toLowerCase() === 'healthy';
+                                        return (
+                                            <View key={index} style={styles.top3Row}>
+                                                <Text style={[styles.top3Label, index === 0 && styles.top3LabelBold]}>
+                                                    {item.hastalik_tr}
+                                                </Text>
+                                                <View style={styles.top3BarWrapper}>
+                                                    <View style={styles.confidenceTrack}>
+                                                        <View style={[styles.confidenceFill, { 
+                                                            width: `${Math.min(item.confidence || 0, 100)}%`,
+                                                            backgroundColor: index === 0
+                                                                ? (isSaglikli ? '#34C759' : '#FF3B30')
+                                                                : '#888'
+                                                        }]} />
+                                                    </View>
+                                                    <Text style={[styles.top3Percent, index === 0 && styles.top3PercentBold]}>
+                                                        %{item.confidence}
+                                                    </Text>
+                                                </View>
+                                            </View>
+                                        );
+                                    })}
+                                </View>
+                            ) : k3.confidence != null && (
+                                <View style={styles.confidenceBar}>
+                                    <View style={styles.confidenceTrack}>
+                                        <View style={[styles.confidenceFill, { 
+                                            width: `${Math.min(k3.confidence || 0, 100)}%`,
+                                            backgroundColor: k3.saglikli ? '#34C759' : '#FF3B30'
                                         }]} />
                                     </View>
-                                    <Text style={styles.probPercent}>%{yuzde}</Text>
+                                    <Text style={styles.confidenceText}>%{k3.confidence}</Text>
                                 </View>
-                            );
-                        })}
-                    </View>
-                )}
+                            )}
+                            {k3.dusuk_confidence && (
+                                <View style={styles.warningBox}>
+                                    <MaterialCommunityIcons name="alert-outline" size={16} color="#FF9500" />
+                                    <Text style={styles.warningText}>
+                                        Düşük güven oranı — sonuç kesin olmayabilir
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+                    ) : k3.durum === 'model_yok' ? (
+                        <View style={styles.comingSoonBox}>
+                            <MaterialCommunityIcons name="information-outline" size={32} color="#FF9500" />
+                            <Text style={styles.comingSoonText}>
+                                {k3.mesaj || 'Bu bitki türü için henüz hastalık modeli bulunmuyor.'}
+                            </Text>
+                        </View>
+                    ) : (
+                        <View style={styles.comingSoonBox}>
+                            <MaterialCommunityIcons name="alert-circle-outline" size={32} color="#FF3B30" />
+                            <Text style={styles.comingSoonText}>
+                                {k3.mesaj || 'Hastalık tespiti sırasında bir hata oluştu.'}
+                            </Text>
+                        </View>
+                    )}
+                </View>
 
                 {/* Aksiyon Butonları */}
                 <View style={styles.actionButtons}>
@@ -186,117 +309,203 @@ const getDynamicStyles = (colors, isDark) => StyleSheet.create({
         resizeMode: 'cover',
     },
 
-    // Durum Göstergesi
-    statusBanner: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: 16,
-        borderRadius: 16,
-        borderWidth: 1,
-        marginBottom: 16,
-    },
-    statusTextWrap: {
-        marginLeft: 12,
-    },
-    statusTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-    },
-    statusSub: {
-        fontSize: 14,
-        color: colors.textMuted,
-        marginTop: 2,
-    },
-
-    // Ana Kart
-    mainCard: {
+    // Pipeline Kart Stilleri
+    pipelineCard: {
         backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
         borderRadius: 20,
         padding: 20,
-        marginBottom: 16,
+        marginBottom: 12,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: isDark ? 0.3 : 0.06,
         shadowRadius: 8,
         elevation: 3,
     },
-    cardHeader: {
+    pipelineCardInactive: {
+        opacity: 0.7,
+        borderWidth: 1,
+        borderColor: isDark ? '#333' : '#E5E5EA',
+        borderStyle: 'dashed',
+    },
+    pipelineHeader: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 16,
     },
-    cardTitle: {
-        fontSize: 17,
+    pipelineIconBox: {
+        width: 44,
+        height: 44,
+        borderRadius: 14,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    pipelineHeaderText: {
+        flex: 1,
+    },
+    pipelineTitle: {
+        fontSize: 16,
         fontWeight: 'bold',
         color: colors.textMain,
-        marginLeft: 10,
     },
-    cardRow: {
+    pipelineSubtitle: {
+        fontSize: 12,
+        color: colors.textMuted,
+        marginTop: 2,
+    },
+
+    // Status Badge
+    statusBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 12,
+        gap: 4,
+    },
+    statusBadgeText: {
+        fontSize: 12,
+        fontWeight: 'bold',
+    },
+
+    // Pipeline Details
+    pipelineDetails: {
+        marginTop: 16,
+        borderTopWidth: 1,
+        borderTopColor: isDark ? '#333' : '#F0F0F0',
+        paddingTop: 12,
+    },
+    detailRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingVertical: 10,
+        paddingVertical: 6,
     },
-    cardLabel: {
-        fontSize: 15,
+    detailLabel: {
+        fontSize: 14,
         color: colors.textMuted,
     },
-    cardValue: {
-        fontSize: 15,
+    detailValue: {
+        fontSize: 14,
         fontWeight: '600',
         color: colors.textMain,
-        maxWidth: '60%',
-        textAlign: 'right',
-    },
-    divider: {
-        height: 1,
-        backgroundColor: isDark ? '#333' : '#F0F0F0',
     },
 
-    // Olasılık Çubukları
-    probRow: {
-        flexDirection: 'row',
+    // Bitki Türü Sonucu
+    bitkiSonuc: {
+        marginTop: 16,
+        paddingTop: 16,
+        borderTopWidth: 1,
+        borderTopColor: isDark ? '#333' : '#F0F0F0',
         alignItems: 'center',
-        marginBottom: 12,
     },
-    probLabelWrap: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        width: 120,
-    },
-    probIndex: {
-        fontSize: 12,
+    bitkiAdi: {
+        fontSize: 28,
         fontWeight: 'bold',
-        color: colors.textMuted,
-        width: 24,
-    },
-    probName: {
-        fontSize: 13,
-        fontWeight: '600',
         color: colors.textMain,
+        letterSpacing: -0.5,
     },
-    probDisease: {
-        fontSize: 11,
+    bitkiKey: {
+        fontSize: 14,
         color: colors.textMuted,
+        marginTop: 4,
+        fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     },
-    probBarBg: {
+
+    // Confidence Bar
+    confidenceBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 16,
+        gap: 12,
+    },
+    confidenceTrack: {
         flex: 1,
         height: 8,
         backgroundColor: isDark ? '#2C2C2E' : '#F0F0F0',
         borderRadius: 4,
-        marginHorizontal: 8,
         overflow: 'hidden',
     },
-    probBarFill: {
+    confidenceFill: {
         height: '100%',
         borderRadius: 4,
     },
-    probPercent: {
-        width: 48,
-        fontSize: 13,
+    confidenceText: {
+        fontSize: 16,
         fontWeight: 'bold',
         color: colors.textMain,
+        minWidth: 48,
         textAlign: 'right',
+    },
+
+    // Top 3 Sonuçlar
+    top3Container: {
+        marginTop: 16,
+        paddingTop: 12,
+        borderTopWidth: 1,
+        borderTopColor: isDark ? '#333' : '#F0F0F0',
+        gap: 10,
+    },
+    top3Row: {
+        gap: 6,
+    },
+    top3Label: {
+        fontSize: 13,
+        color: colors.textMuted,
+    },
+    top3LabelBold: {
+        fontWeight: 'bold',
+        color: colors.textMain,
+        fontSize: 14,
+    },
+    top3BarWrapper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    top3Percent: {
+        fontSize: 13,
+        color: colors.textMuted,
+        minWidth: 44,
+        textAlign: 'right',
+    },
+    top3PercentBold: {
+        fontWeight: 'bold',
+        color: colors.textMain,
+        fontSize: 14,
+    },
+
+    // Coming Soon / Info
+    comingSoonBox: {
+        marginTop: 16,
+        paddingTop: 16,
+        borderTopWidth: 1,
+        borderTopColor: isDark ? '#333' : '#F0F0F0',
+        alignItems: 'center',
+        paddingVertical: 20,
+    },
+    comingSoonText: {
+        fontSize: 14,
+        color: '#888',
+        textAlign: 'center',
+        marginTop: 12,
+        lineHeight: 20,
+    },
+
+    // Warning Box (düşük güven)
+    warningBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 12,
+        padding: 10,
+        backgroundColor: isDark ? '#3A2A0020' : '#FFF3E0',
+        borderRadius: 10,
+        gap: 8,
+    },
+    warningText: {
+        flex: 1,
+        fontSize: 12,
+        color: '#FF9500',
+        lineHeight: 16,
     },
 
     // Aksiyon Butonları

@@ -1,0 +1,6 @@
+apple
+cherry
+corn
+grape
+potato
+tomato

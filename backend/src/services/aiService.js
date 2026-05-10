@@ -1,74 +1,89 @@
-const tf = require('@tensorflow/tfjs');
-const sharp = require('sharp');
 const fs = require('fs');
 const path = require('path');
 
-// Model ve etiket dosyalarının yolları
-const MODEL_DIR = path.join(__dirname, '..', 'model');
-const LABELS_PATH = path.join(MODEL_DIR, 'etiketler.txt');
-const TFLITE_PATH = path.join(MODEL_DIR, 'bitki_modeli.tflite');
+// ─── Model Dosya Yolları (Proje kök dizininden) ──────────
+const PROJECT_ROOT = path.join(__dirname, '..', '..', '..');
+const YOLO_MODEL_PATH = path.join(PROJECT_ROOT, 'ai_model', 'active_models', 'yolo_leaf_best.pt');
+const PLANT_MODEL_PATH = path.join(PROJECT_ROOT, 'ai_model', 'active_models', 'plant_mobilenetv3large_best.h5');
+const CLASS_NAMES_PATH = path.join(PROJECT_ROOT, 'ai_model', 'active_models', 'class_names.txt');
+const DISEASE_MODELS_DIR = path.join(PROJECT_ROOT, 'ai_model', 'active_models', 'disease_models');
+const PIPELINE_SCRIPT = path.join(__dirname, 'predict_pipeline.py');
 
-// Türkçe bitki ve hastalık isimleri haritası
+// Türkçe bitki isimleri haritası
 const BITKI_TR = {
     apple: 'Elma', cherry: 'Kiraz', corn: 'Mısır', grape: 'Üzüm',
     peach: 'Şeftali', pepper_bell: 'Biber', potato: 'Patates',
     squash: 'Kabak', strawberry: 'Çilek', tea: 'Çay', tomato: 'Domates'
 };
 
+// Hastalık Türkçe isimleri
 const HASTALIK_TR = {
-    healthy: 'Sağlıklı',
-    black_rot: 'Siyah Çürüklük',
-    cedar_apple_rust: 'Sedir-Elma Pası',
-    scab: 'Karaleke',
-    powdery_mildew: 'Külleme',
-    cercospora_leaf_spot: 'Cercospora Yaprak Lekesi',
-    common_rust: 'Pas Hastalığı',
-    northern_leaf_blight: 'Kuzey Yaprak Yanıklığı',
-    esca_black_measles: 'Esca (Siyah Kızamık)',
-    leaf_blight: 'Yaprak Yanıklığı',
-    bacterial_spot: 'Bakteriyel Leke',
-    early_blight: 'Erken Yanıklık',
-    late_blight: 'Geç Yanıklık',
-    leaf_scorch: 'Yaprak Yanığı',
-    algal_leaf: 'Alg Yaprak Hastalığı',
-    anthracnose: 'Antrakoz',
-    bird_eye_spot: 'Kuş Gözü Lekesi',
-    brown_blight: 'Kahverengi Yanıklık',
-    red_leaf_spot: 'Kırmızı Yaprak Lekesi',
-    leaf_mold: 'Yaprak Küfü',
-    mosaic_virus: 'Mozaik Virüsü',
-    septoria_leaf_spot: 'Septoria Yaprak Lekesi',
-    target_spot: 'Hedef Lekesi',
-    yellow_leaf_curl_virus: 'Sarı Yaprak Kıvırma Virüsü'
+    'Healthy': 'Sağlıklı',
+    'Apple Scab': 'Elma Karalekesi',
+    'Black Rot': 'Siyah Çürüklük',
+    'Cedar Apple Rust': 'Sedir-Elma Pası',
+    'Powdery Mildew': 'Külleme',
+    'Cercospora Leaf Spot': 'Cercospora Yaprak Lekesi',
+    'Common Rust': 'Pas Hastalığı',
+    'Northern Leaf Blight': 'Kuzey Yaprak Yanıklığı',
+    'Esca (Black Measles)': 'Esca (Siyah Kızamık)',
+    'Leaf Blight': 'Yaprak Yanıklığı',
+    'Bacterial Spot': 'Bakteriyel Leke',
+    'Early Blight': 'Erken Yanıklık',
+    'Late Blight': 'Geç Yanıklık',
+    'Septoria Leaf Spot': 'Septoria Yaprak Lekesi',
+    'Yellow Leaf Curl Virus': 'Sarı Yaprak Kıvırma Virüsü'
 };
 
-let model = null;
-let labels = [];
+let modelsReady = false;
+let classNames = [];
 
 /**
- * TFLite modelini TensorFlow.js GraphModel olarak yükler.
- * NOT: tfjs-node, .tflite dosyasını doğrudan yükleyemez.
- * Bu nedenle modelin önceden SavedModel veya tfjs formatına dönüştürülmesi 
- * veya tflite-interpreter kullanılması gerekir.
- * 
- * Eğer tflite dosyası varsa, onu Node.js'de çalıştırmak için
- * @tensorflow/tfjs-tflite veya tflite-runtime-node kullanılır.
- * 
- * Burada en güvenilir yaklaşım: tflite dosyasını doğrudan 
- * TFLite Interpreter ile çalıştırma.
+ * Model dosyalarının varlığını kontrol eder ve sınıf isimlerini yükler.
  */
 async function loadModel() {
     try {
-        // Etiketleri yükle
-        const labelsRaw = fs.readFileSync(LABELS_PATH, 'utf-8');
-        labels = labelsRaw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-        console.log(`✅ ${labels.length} etiket başarıyla yüklendi.`);
+        // Model dosyalarını kontrol et
+        const requiredFiles = [
+            { path: YOLO_MODEL_PATH, name: 'YOLO Model (yolo_leaf_best.pt)' },
+            { path: PLANT_MODEL_PATH, name: 'Bitki Sınıflandırma (plant_mobilenetv3large_best.h5)' },
+            { path: CLASS_NAMES_PATH, name: 'Sınıf İsimleri (class_names.txt)' },
+            { path: PIPELINE_SCRIPT, name: 'Pipeline Script (predict_pipeline.py)' }
+        ];
 
-        // TFLite dosyasını Buffer olarak oku
-        const modelBuffer = fs.readFileSync(TFLITE_PATH);
-        model = { buffer: modelBuffer, type: 'tflite' };
-        
-        console.log(`✅ TFLite modeli belleğe yüklendi (${(modelBuffer.length / 1024 / 1024).toFixed(2)} MB)`);
+        for (const file of requiredFiles) {
+            if (!fs.existsSync(file.path)) {
+                console.error(`❌ ${file.name} bulunamadı: ${file.path}`);
+                return false;
+            }
+            const stats = fs.statSync(file.path);
+            console.log(`✅ ${file.name} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+        }
+
+        // Hastalık modelleri klasörünü kontrol et
+        if (fs.existsSync(DISEASE_MODELS_DIR)) {
+            const diseaseFiles = fs.readdirSync(DISEASE_MODELS_DIR).filter(f => f.endsWith('.keras'));
+            console.log(`✅ Hastalık Modelleri: ${diseaseFiles.length} model bulundu`);
+            diseaseFiles.forEach(f => {
+                const bitkiAdi = f.replace('_disease_model.keras', '');
+                const stats = fs.statSync(path.join(DISEASE_MODELS_DIR, f));
+                console.log(`   🔬 ${BITKI_TR[bitkiAdi] || bitkiAdi} hastalık modeli (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+            });
+        } else {
+            console.warn('⚠️ Hastalık modelleri klasörü bulunamadı:', DISEASE_MODELS_DIR);
+        }
+
+        // Sınıf isimlerini oku
+        const rawNames = fs.readFileSync(CLASS_NAMES_PATH, 'utf-8');
+        classNames = rawNames.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        console.log(`✅ ${classNames.length} bitki türü yüklendi: [${classNames.join(', ')}]`);
+
+        modelsReady = true;
+        console.log('\n🌿 3 Katmanlı AI Pipeline hazır!');
+        console.log('   Katman 1: YOLO Yaprak Tespiti');
+        console.log('   Katman 2: MobileNet Bitki Türü Sınıflandırma');
+        console.log('   Katman 3: Hastalık Tespiti (Aktif ✅)\n');
+
         return true;
     } catch (error) {
         console.error('❌ Model yükleme hatası:', error);
@@ -77,89 +92,36 @@ async function loadModel() {
 }
 
 /**
- * Görüntüyü 224x224 boyutuna resize eder ve piksel verilerini 
- * 0-255 aralığında (normalize etmeden) Float32 formatına dönüştürür.
- * (Modelin içindeki entegre preprocessing katmanına uygun olarak)
- */
-async function preprocessImage(imageBuffer) {
-    // Sharp ile 224x224'e resize et ve raw RGB pikselleri al
-    const { data, info } = await sharp(imageBuffer)
-        .resize(224, 224, { fit: 'cover' })
-        .removeAlpha()       // Alpha kanalını kaldır (sadece RGB)
-        .raw()               // Raw pixel verileri
-        .toBuffer({ resolveWithObject: true });
-
-    // Float32Array'e dönüştür ve doğrudan 0-255 pixel değerlerini at
-    // DİKKAT: Model içinde preprocess olduğundan /255 işlemi yapılmaz!
-    const float32Data = new Float32Array(224 * 224 * 3);
-    for (let i = 0; i < data.length; i++) {
-        float32Data[i] = data[i]; // Direkt ham (0-255) değeri al
-    }
-
-    // TensorFlow.js tensor'üne çevir [1, 224, 224, 3] (batch=1)
-    const tensor = tf.tensor4d(float32Data, [1, 224, 224, 3]);
-
-    return tensor;
-}
-
-/**
- * Etiket string'ini Türkçe bitki adı ve hastalık adına ayırır.
- * Örn: "tomato_early_blight" → { bitki: "Domates", hastalik: "Erken Yanıklık" }
- */
-function parseLabel(label) {
-    const parts = label.split('_');
-    let bitkiKey = parts[0];
-    let hastalikKey = '';
-
-    // pepper_bell gibi iki kelimelik bitki isimlerini yakala
-    if (parts[0] === 'pepper' && parts[1] === 'bell') {
-        bitkiKey = 'pepper_bell';
-        hastalikKey = parts.slice(2).join('_');
-    } else {
-        hastalikKey = parts.slice(1).join('_');
-    }
-
-    return {
-        bitki: BITKI_TR[bitkiKey] || bitkiKey,
-        hastalik: HASTALIK_TR[hastalikKey] || hastalikKey,
-        saglikli: hastalikKey === 'healthy'
-    };
-}
-
-/**
- * Görüntüden tahmin yapar.
+ * 3 Katmanlı AI Pipeline ile görüntü analizi.
+ * Python predict_pipeline.py scriptini çalıştırır.
  * @param {Buffer} imageBuffer - JPEG/PNG ham görüntü verisi
- * @returns {{ basarili, tahmin, topEnSonuclar }}
+ * @returns {Promise<Object>} Pipeline sonucu
  */
 async function predict(imageBuffer) {
-    if (!model) {
-        throw new Error('Model henüz yüklenmedi. Lütfen sunucuyu yeniden başlatın.');
+    if (!modelsReady) {
+        throw new Error('Modeller henüz yüklenmedi. Lütfen sunucuyu yeniden başlatın.');
     }
 
-    // NOT: Node.js üzerinden saf .tflite desteklenmediği için, oluşturduğumuz predict.py dosyasını Python ile çalıştırıyoruz.
     return new Promise((resolve, reject) => {
-        // Görüntüyü geçici bir dosyaya kaydet
-        const fs = require('fs');
-        const path = require('path');
+        // Görüntüyü geçici dosyaya kaydet
         const tempImagePath = path.join(__dirname, '..', '..', 'tmp_predict.jpg');
-        const scriptPath = path.join(__dirname, 'predict.py');
-        
         fs.writeFileSync(tempImagePath, imageBuffer);
 
         const { spawn } = require('child_process');
-        
-        // Python çalıştırılabilir yolunu belirle: 
-        // 1. Önce .env dosyasındaki PYTHON_PATH (Varsa)
-        // 2. Yoksa sistemdeki 'python' komutu
+
+        // Python yolu
         const pythonExecutable = process.env.PYTHON_PATH || 'python';
-        console.log(`🔍 Using Python: ${pythonExecutable}`);
-        
-        // Komut: <python> predict.py <model_yolu> <resim_yolu> <etiket_yolu>
+        console.log(`🔍 Python: ${pythonExecutable}`);
+        console.log(`🚀 Pipeline başlatılıyor...`);
+
+        // Komut: python predict_pipeline.py <yolo> <plant_model> <class_names> <image> <disease_dir>
         const pythonProcess = spawn(pythonExecutable, [
-            scriptPath,
-            TFLITE_PATH,
+            PIPELINE_SCRIPT,
+            YOLO_MODEL_PATH,
+            PLANT_MODEL_PATH,
+            CLASS_NAMES_PATH,
             tempImagePath,
-            LABELS_PATH
+            DISEASE_MODELS_DIR
         ]);
 
         let resultData = '';
@@ -174,60 +136,99 @@ async function predict(imageBuffer) {
         });
 
         pythonProcess.on('close', (code) => {
-            // İşi biten geçici resmi sil
+            // Geçici resmi temizle
             if (fs.existsSync(tempImagePath)) {
                 fs.unlinkSync(tempImagePath);
+            }
+
+            // stderr'deki debug loglarını göster (ama hata değil)
+            if (errorData && errorData.includes('[Katman3 Debug]')) {
+                console.log('🔬 Katman 3 Debug:', errorData.trim());
             }
 
             if (code !== 0) {
                 console.error("Python Hatası (stderr):", errorData);
                 return resolve({
                     basarili: false,
-                    hata: "Python betiği hatası. " + errorData.substring(0, 100),
-                    detay: "Lütfen Python (tensorflow, pillow, numpy, rembg) kurulu olduğundan emin olun."
+                    hata: "Python pipeline hatası. " + errorData.substring(0, 200),
+                    detay: "Lütfen Python ortamında ultralytics, tensorflow/tf_keras, pillow, numpy kurulu olduğundan emin olun."
                 });
             }
 
             try {
-                // Python'dan JSON olarak dönen veriyi parse et
                 const parsedResult = JSON.parse(resultData);
+
                 if (!parsedResult.basarili) {
-                    return resolve({ basarili: false, hata: parsedResult.hata });
-                }
-
-                // Python 5 sonuç dönecek, bunlar topEnSonuclar
-                const top5 = parsedResult.sonuclar;
-                const bestMatch = top5[0];
-                const bestLabel = bestMatch.etiket;
-                const parsed = parseLabel(bestLabel);
-
-                // Kural: Confidence 0.50'nin altındaysa sonuç gösterme, tekrar çekilmesini iste
-                if (bestMatch.oran < 0.50) {
                     return resolve({
                         basarili: false,
-                        hata: "Emin değilim. Lütfen yaprağı tam merkeze alarak (arka plan sade olacak şekilde) net bir fotoğraf çekin."
+                        hata: parsedResult.hata,
+                        katman: parsedResult.katman || null,
+                        dusuk_confidence: parsedResult.dusuk_confidence || false
                     });
+                }
+
+                // Pipeline sonuçlarını formatla
+                const k1 = parsedResult.katman1_yaprak;
+                const k2 = parsedResult.katman2_bitki;
+                const k3 = parsedResult.katman3_hastalik;
+
+                console.log(`  📍 Katman 1: Yaprak bulundu (güven: %${(k1.confidence * 100).toFixed(1)})`);
+                console.log(`  🌿 Katman 2: ${k2.tur_tr} (güven: %${(k2.confidence * 100).toFixed(1)})`);
+
+                // Katman 3 log
+                if (k3.durum === 'tespit_edildi') {
+                    const emoji = k3.saglikli ? '✅' : '🔴';
+                    console.log(`  🔬 Katman 3: ${emoji} ${k3.hastalik_tr} (güven: %${(k3.confidence * 100).toFixed(1)})`);
+                    if (k3.dusuk_confidence) {
+                        console.log(`  ⚠️ Katman 3: Düşük güven oranı!`);
+                    }
+                } else {
+                    console.log(`  🔬 Katman 3: ${k3.durum} - ${k3.mesaj || ''}`);
                 }
 
                 resolve({
                     basarili: true,
                     tahmin: {
-                        etiket: bestLabel,
-                        bitki: parsed.bitki,
-                        hastalik: parsed.hastalik,
-                        saglikli: parsed.saglikli,
-                        guvenOrani: parseFloat((bestMatch.oran * 100).toFixed(1))
+                        bitki: k2.tur_tr,
+                        bitki_key: k2.tur,
+                        hastalik: k3.hastalik_tr || null,
+                        saglikli: k3.saglikli,
+                        hastalik_durumu: k3.durum // 'tespit_edildi' | 'model_yok' | 'hata'
                     },
-                    topEnSonuclar: top5.map(item => ({
-                        etiket: item.etiket,
-                        ...parseLabel(item.etiket),
-                        oran: parseFloat((item.oran * 100).toFixed(1))
-                    })),
-                    debug_image: parsedResult.debug_image // İşlenmiş Base64 resim buraya eklendi
+                    katman1_yaprak: {
+                        tespit_edildi: k1.tespit_edildi,
+                        confidence: parseFloat((k1.confidence * 100).toFixed(1)),
+                        bbox: k1.bbox,
+                        toplam_tespit: k1.toplam_tespit
+                    },
+                    katman2_bitki: {
+                        tur: k2.tur,
+                        tur_tr: k2.tur_tr,
+                        confidence: parseFloat((k2.confidence * 100).toFixed(1)),
+                        top3: (k2.top3 || []).map(t => ({
+                            tur: t.tur,
+                            tur_tr: t.tur_tr,
+                            confidence: parseFloat((t.confidence * 100).toFixed(1))
+                        }))
+                    },
+                    katman3_hastalik: {
+                        durum: k3.durum,
+                        hastalik: k3.hastalik || null,
+                        hastalik_tr: k3.hastalik_tr || null,
+                        saglikli: k3.saglikli,
+                        confidence: k3.confidence ? parseFloat((k3.confidence * 100).toFixed(1)) : null,
+                        dusuk_confidence: k3.dusuk_confidence || false,
+                        mesaj: k3.mesaj || null,
+                        top3: (k3.top3 || []).map(t => ({
+                            hastalik: t.hastalik,
+                            hastalik_tr: t.hastalik_tr,
+                            confidence: parseFloat((t.confidence * 100).toFixed(1))
+                        }))
+                    }
                 });
 
             } catch (err) {
-                console.error("JSON Parse Hatası (Python çıktısı):", resultData);
+                console.error("JSON Parse Hatası:", resultData);
                 resolve({ basarili: false, hata: "Python çıktısı anlaşılamadı." });
             }
         });
@@ -235,13 +236,13 @@ async function predict(imageBuffer) {
 }
 
 /**
- * Yüklü etiketlerin listesini döndürür
+ * Desteklenen bitki türlerini döndürür
  */
 function getLabels() {
-    return labels.map((label, index) => ({
+    return classNames.map((name, index) => ({
         index,
-        etiket: label,
-        ...parseLabel(label)
+        key: name,
+        isim: BITKI_TR[name] || name.capitalize?.() || name
     }));
 }
 

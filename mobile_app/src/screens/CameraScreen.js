@@ -20,16 +20,15 @@ export default function CameraScreen({ navigation }) {
     const [permission, requestPermission] = useCameraPermissions();
     const [facing, setFacing] = useState('back');
     const [flash, setFlash] = useState('off');
-    const [mode, setMode] = useState('diagnose'); // 'diagnose' | 'identify'
-    const [photos, setPhotos] = useState([]); // { uri: string }[]
     const [hasAsked, setHasAsked] = useState(false);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [analyzeStep, setAnalyzeStep] = useState(''); // Hangi katmanda olduğunu gösterir
     const insets = useSafeAreaInsets();
 
     const cameraRef = useRef(null);
 
     // Backend API URL (Fiziksel cihaz için bilgisayarın WiFi IP adresi)
-    const API_BASE = 'http://192.168.1.12:3000';
+    const API_BASE = 'http://192.168.1.3:3000';
 
     // İzin isteme fonksiyonu - tek seferlik deneyin ardından Ayarlara Git moduna geç
     async function handlePermissionRequest() {
@@ -114,12 +113,12 @@ export default function CameraScreen({ navigation }) {
     async function pickImage() {
         let result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ['images'],
-            allowsEditing: true, // Crop özelliği botanik vizyonu için kritik
-            quality: 0.8,
+            allowsEditing: false, // YOLO zaten yaprağı bulacağı için crop gereksiz
+            quality: 0.9,
         });
 
         if (!result.canceled) {
-            handleNewPhoto(result.assets[0].uri);
+            await analyzePhoto(result.assets[0].uri);
         }
     }
 
@@ -127,78 +126,52 @@ export default function CameraScreen({ navigation }) {
     async function takePicture() {
         if (cameraRef.current) {
             try {
-                // Maksimum limiti kontrol et, teşhis için max 2
-                if (mode === 'diagnose' && photos.length >= 2) return;
-
                 const photo = await cameraRef.current.takePictureAsync({
-                    quality: 0.8,
+                    quality: 0.9,
                     base64: false
                 });
 
-                handleNewPhoto(photo.uri);
+                await analyzePhoto(photo.uri);
             } catch (error) {
                 console.error("Fotoğraf çekilirken hata:", error);
             }
         }
     }
 
-    // AI Modeline uygun Center Crop + 224x224 İşleme (Preprocess)
-    async function preprocessImageForAI(uri) {
-        try {
-            // Fotoğrafın gerçek piksel boyutlarını al
-            const imageSize = await new Promise((resolve, reject) => {
-                Image.getSize(uri, (w, h) => resolve({ width: w, height: h }), reject);
-            });
-
-            // CENTER CROP: Vizör çerçevesine uygun olarak merkezi kırp
-            // Arka planın büyük bölümünü keserek domain shift sorununu azaltır
-            const cropW = Math.floor(imageSize.width * 0.85);
-            const cropH = Math.floor(imageSize.height * 0.85);
-            const originX = Math.floor((imageSize.width - cropW) / 2);
-            const originY = Math.floor((imageSize.height - cropH) / 2);
-
-            const result = await ImageManipulator.manipulateAsync(
-                uri,
-                [
-                    { crop: { originX, originY, width: cropW, height: cropH } },
-                    { resize: { width: 224, height: 224 } }
-                ],
-                { format: ImageManipulator.SaveFormat.JPEG, compress: 1, base64: true }
-            );
-
-            return result;
-        } catch (error) {
-            // Center crop hata verirse direkt resize'a düş
-            console.warn("Center crop başarısız, direkt resize:", error.message);
-            try {
-                return await ImageManipulator.manipulateAsync(
-                    uri,
-                    [{ resize: { width: 224, height: 224 } }],
-                    { format: ImageManipulator.SaveFormat.JPEG, compress: 1, base64: true }
-                );
-            } catch (e2) {
-                console.error("Görüntü işlenirken hata:", e2);
-                return null;
-            }
-        }
-    }
-
-    // Backend API'ye fotoğraf gönder ve teşhis al
-    async function runPlantAI(processedImage, originalUri) {
+    // Fotoğrafı backend'e gönder ve 3 katmanlı AI pipeline sonucu al
+    async function analyzePhoto(uri) {
         try {
             setIsAnalyzing(true);
+            setAnalyzeStep('Görüntü hazırlanıyor...');
+
+            // Fotoğrafı kaliteli JPEG'e dönüştür (YOLO kendi crop yapacak)
+            const processed = await ImageManipulator.manipulateAsync(
+                uri,
+                [], // Artık crop/resize yok — YOLO bunu hallediyor
+                { format: ImageManipulator.SaveFormat.JPEG, compress: 0.9 }
+            );
+
+            setAnalyzeStep('Yaprak aranıyor (YOLO)...');
 
             const formData = new FormData();
-            formData.append('image', {
-                uri: processedImage.uri,
-                type: 'image/jpeg',
-                name: 'plant_photo.jpg'
-            });
+            
+            if (Platform.OS === 'web') {
+                // Web'de blob'a çevirmemiz gerekiyor
+                const res = await fetch(processed.uri);
+                const blob = await res.blob();
+                formData.append('image', blob, 'plant_photo.jpg');
+            } else {
+                // Mobil cihazlarda klasik yöntem
+                formData.append('image', {
+                    uri: processed.uri,
+                    type: 'image/jpeg',
+                    name: 'plant_photo.jpg'
+                });
+            }
 
             const response = await fetch(`${API_BASE}/api/diagnose`, {
                 method: 'POST',
-                body: formData,
-                headers: { 'Content-Type': 'multipart/form-data' },
+                body: formData
             });
 
             const result = await response.json();
@@ -206,10 +179,19 @@ export default function CameraScreen({ navigation }) {
             if (result.basarili) {
                 navigation.navigate('DiagnosisResult', {
                     result: result,
-                    photoUri: originalUri
+                    photoUri: uri
                 });
             } else {
-                Alert.alert("Hata", result.hata || "Teşhis yapılamadı.");
+                // Özel hata mesajları
+                if (result.dusuk_confidence) {
+                    Alert.alert(
+                        "Emin Değilim",
+                        "Bitki türü yeterince güvenilir tespit edilemedi. Lütfen yaprağı daha yakından ve net bir şekilde çekin.",
+                        [{ text: "Tekrar Dene" }]
+                    );
+                } else {
+                    Alert.alert("Hata", result.hata || "Analiz yapılamadı.");
+                }
             }
         } catch (error) {
             console.error("API Hatası:", error);
@@ -219,36 +201,8 @@ export default function CameraScreen({ navigation }) {
             );
         } finally {
             setIsAnalyzing(false);
+            setAnalyzeStep('');
         }
-    }
-
-    // Ortak fotoğraf işleme algoritması
-    async function handleNewPhoto(uri) {
-        const processed = await preprocessImageForAI(uri);
-        if (!processed) return;
-
-        if (mode === 'diagnose') {
-            const newPhotos = [...photos, { uri: processed.uri }];
-            setPhotos(newPhotos);
-            if (newPhotos.length === 2) {
-                await runPlantAI(processed, uri);
-            }
-        } else {
-            setPhotos([{ uri: processed.uri }]);
-            await runPlantAI(processed, uri);
-        }
-    }
-
-    function switchMode(newMode) {
-        setMode(newMode);
-        setPhotos([]); // Mod değiştiğinde eski çekimleri sıfırlıyoruz.
-    }
-
-    // Silmek için fotoğraf slotuna tıklama
-    function removePhoto(index) {
-        const remainingPhotos = [...photos];
-        remainingPhotos.splice(index, 1);
-        setPhotos(remainingPhotos);
     }
 
     return (
@@ -268,8 +222,6 @@ export default function CameraScreen({ navigation }) {
                         <MaterialCommunityIcons name="close" size={26} color="#FFFFFF" />
                     </TouchableOpacity>
 
-
-
                     <View style={{ flexDirection: 'row' }}>
                         <TouchableOpacity style={[styles.iconButton, { marginRight: 12 }]} onPress={toggleFlash}>
                             <MaterialCommunityIcons name={flash === 'on' ? 'flash' : 'flash-off'} size={24} color="#FFFFFF" />
@@ -281,65 +233,42 @@ export default function CameraScreen({ navigation }) {
                     </View>
                 </View>
 
-                {/* Merkez Hedef Çerçevesi Dotted/Dashed Layout */}
+                {/* Merkez Hedef Çerçevesi */}
                 <View style={styles.focusFrameContainer} pointerEvents="none">
                     <View style={styles.focusFrameBorder} />
                 </View>
 
-                {/* Alt HUD Katmanı (Bottom Drawer / Control Panel) */}
+                {/* Alt HUD Katmanı */}
                 <View style={styles.bottomHudWrapper}>
 
-                    {/* Yönerge ve Fotoğraf Slotları (Teşhis kısmı için 2 Slot) */}
+                    {/* Yönerge */}
                     <View style={styles.instructionArea}>
                         <Text style={styles.instructionText}>
-                            Yaprağı vizör merkezine ortalayın
+                            Bitkiyi vizör içine alın — yaprak otomatik bulunacak
                         </Text>
-
-                        {mode === 'diagnose' && (
-                            <View style={styles.slotRow}>
-                                {/* Slot 1 */}
-                                <TouchableOpacity style={styles.photoSlot} onPress={() => photos[0] && removePhoto(0)} activeOpacity={0.7}>
-                                    {photos[0] ? (
-                                        <Image source={{ uri: photos[0].uri }} style={styles.slotImage} />
-                                    ) : (
-                                        <View style={styles.slotEmpty} />
-                                    )}
-                                    {photos[0] && <View style={styles.slotDeleteBadge}><MaterialCommunityIcons name="close" size={12} color="#FFF" /></View>}
-                                </TouchableOpacity>
-
-                                {/* Slot 2 */}
-                                <TouchableOpacity style={styles.photoSlot} onPress={() => photos[1] && removePhoto(1)} activeOpacity={0.7}>
-                                    {photos[1] ? (
-                                        <Image source={{ uri: photos[1].uri }} style={styles.slotImage} />
-                                    ) : (
-                                        <View style={styles.slotEmpty} />
-                                    )}
-                                    {photos[1] && <View style={styles.slotDeleteBadge}><MaterialCommunityIcons name="close" size={12} color="#FFF" /></View>}
-                                </TouchableOpacity>
-                            </View>
-                        )}
                     </View>
 
-                    {/* Siyah Kapsül Alt Menü Tab ve Tuşlar */}
+                    {/* Alt Menü */}
                     <View style={[styles.drawerContainer, {
                         backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
-                        paddingBottom: Math.max(insets.bottom + 10, 30) // En alt sınır boşluğu cihazın doğal güvenlik alanına göre doldurulur
+                        paddingBottom: Math.max(insets.bottom + 10, 30)
                     }]}>
-                        {/* İç Sekmeler (Teşhis Koymak / Bitkiler) */}
-                        <View style={styles.internalTabs}>
-                            <TouchableOpacity style={styles.tabButton} onPress={() => switchMode('diagnose')}>
-                                <MaterialCommunityIcons name="medical-bag" size={20} color={mode === 'diagnose' ? colors.accent : colors.navInactive} />
-                                <Text style={[styles.tabText, { color: mode === 'diagnose' ? colors.accent : colors.navInactive, fontWeight: mode === 'diagnose' ? 'bold' : '600' }]}>
-                                    Teşhis koymak
-                                </Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity style={styles.tabButton} onPress={() => switchMode('identify')}>
-                                <MaterialCommunityIcons name="leaf" size={22} color={mode === 'identify' ? colors.accent : colors.navInactive} />
-                                <Text style={[styles.tabText, { color: mode === 'identify' ? colors.accent : colors.navInactive, fontWeight: mode === 'identify' ? 'bold' : '600' }]}>
-                                    Bitkiler
-                                </Text>
-                            </TouchableOpacity>
+                        {/* Pipeline Bilgi Bandı */}
+                        <View style={styles.pipelineInfo}>
+                            <View style={styles.pipelineStep}>
+                                <MaterialCommunityIcons name="image-search-outline" size={16} color={colors.accent} />
+                                <Text style={[styles.pipelineStepText, { color: colors.textMuted }]}>Yaprak Bul</Text>
+                            </View>
+                            <MaterialCommunityIcons name="chevron-right" size={16} color={colors.textMuted} />
+                            <View style={styles.pipelineStep}>
+                                <MaterialCommunityIcons name="leaf" size={16} color={colors.accent} />
+                                <Text style={[styles.pipelineStepText, { color: colors.textMuted }]}>Türü Tanı</Text>
+                            </View>
+                            <MaterialCommunityIcons name="chevron-right" size={16} color={colors.textMuted} />
+                            <View style={styles.pipelineStep}>
+                                <MaterialCommunityIcons name="medical-bag" size={16} color={'#888'} />
+                                <Text style={[styles.pipelineStepText, { color: '#888' }]}>Hastalık (Yakında)</Text>
+                            </View>
                         </View>
 
                         {/* Alt Action Row: Galeri, Deklanşör, İpuçları */}
@@ -356,19 +285,16 @@ export default function CameraScreen({ navigation }) {
                             <TouchableOpacity
                                 style={[styles.shutterOuter, { borderColor: isDark ? '#A1A1AA' : '#E5E5EA' }]}
                                 onPress={takePicture}
-                                disabled={mode === 'diagnose' && photos.length >= 2}
                             >
-                                <View style={[styles.shutterInner, {
-                                    backgroundColor: (mode === 'diagnose' && photos.length >= 2) ? '#555' : '#FFFFFF'
-                                }]} />
+                                <View style={[styles.shutterInner, { backgroundColor: '#FFFFFF' }]} />
                             </TouchableOpacity>
 
                             {/* İpuçları Tuşu */}
-                            <TouchableOpacity style={styles.actionSideItem} onPress={() => Alert.alert("İpucu", "Kamerayı bitkiye çok yaklaştırmayın ve ışığın arkadan gelmemesine dikkat edin.")}>
+                            <TouchableOpacity style={styles.actionSideItem} onPress={() => Alert.alert("İpucu", "Yaprak fotoğrafını çekerken:\n\n• Bitkiye çok yaklaşmayın\n• Işığın arkadan gelmemesine dikkat edin\n• Yaprağın tam görünmesini sağlayın\n\nYapay zeka yaprağı otomatik bulup analiz edecektir.")}>
                                 <View style={styles.actionSubCircle}>
                                     <MaterialCommunityIcons name="help" size={24} color={isDark ? '#FFF' : '#1A1A1A'} />
                                 </View>
-                                <Text style={[styles.actionSubText, { color: isDark ? '#A1A1AA' : '#8E8E93' }]}>Snap ipuçları</Text>
+                                <Text style={[styles.actionSubText, { color: isDark ? '#A1A1AA' : '#8E8E93' }]}>İpuçları</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -381,8 +307,24 @@ export default function CameraScreen({ navigation }) {
                 <View style={styles.analyzingOverlay}>
                     <View style={styles.analyzingBox}>
                         <ActivityIndicator size="large" color={colors.accent} />
-                        <Text style={styles.analyzingText}>Yaprak analiz ediliyor...</Text>
-                        <Text style={styles.analyzingSubText}>Yapay zeka modeli çalışıyor</Text>
+                        <Text style={styles.analyzingText}>AI Analizi Yapılıyor</Text>
+                        <Text style={styles.analyzingSubText}>{analyzeStep || '3 katmanlı pipeline çalışıyor...'}</Text>
+
+                        {/* Pipeline adımları göstergesi */}
+                        <View style={styles.pipelineSteps}>
+                            <View style={styles.stepItem}>
+                                <MaterialCommunityIcons name="image-search-outline" size={18} color={colors.accent} />
+                                <Text style={styles.stepText}>YOLO Yaprak Tespiti</Text>
+                            </View>
+                            <View style={styles.stepItem}>
+                                <MaterialCommunityIcons name="leaf" size={18} color={colors.accent} />
+                                <Text style={styles.stepText}>Bitki Türü Tanıma</Text>
+                            </View>
+                            <View style={styles.stepItem}>
+                                <MaterialCommunityIcons name="clock-outline" size={18} color="#888" />
+                                <Text style={[styles.stepText, { color: '#888' }]}>Hastalık Analizi (Yakında)</Text>
+                            </View>
+                        </View>
                     </View>
                 </View>
             )}
@@ -423,30 +365,29 @@ const getDynamicStyles = (colors) => StyleSheet.create({
         alignItems: 'center',
     },
 
-
     // Merkezi Odak Çerçevesi
     focusFrameContainer: {
-        flex: 1, // Absolute kuralı silindi. Bu sayede Alt menü ile üst menü arasına hapsolacak ve onlara asla dokunmayacak.
+        flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
         zIndex: 5,
     },
     focusFrameBorder: {
-        width: screenWidth - 100, // Daha derli toplu ve ortada
-        height: screenWidth - 60, // Dev diktörtgen yerine modern kompakt dikdörtgen
+        width: screenWidth - 100,
+        height: screenWidth - 60,
         borderWidth: 2,
         borderColor: 'rgba(255, 255, 255, 0.7)',
         borderRadius: 24,
     },
 
-    // Alt UI (Drawer & Text)
+    // Alt UI
     bottomHudWrapper: {
         width: '100%',
         justifyContent: 'flex-end',
     },
     instructionArea: {
         paddingHorizontal: 30,
-        paddingBottom: 8, // Ekranın alttaki siyah (drawer) paneline en yakın şekilde kilitlendi
+        paddingBottom: 8,
     },
     instructionText: {
         color: '#FFFFFF',
@@ -457,75 +398,40 @@ const getDynamicStyles = (colors) => StyleSheet.create({
         textShadowRadius: 6,
         marginBottom: 12,
     },
-    slotRow: {
-        flexDirection: 'row',
-        gap: 16, // Eğer gap eskide problem atarsa marginRight ile revize edilebilir ama yeni RN sürümde çalışır
-        marginLeft: 4,
-    },
-    photoSlot: {
-        width: 60,
-        height: 60,
-        borderRadius: 14,
-        justifyContent: 'center',
-        alignItems: 'center',
-        position: 'relative'
-    },
-    slotEmpty: {
-        width: '100%',
-        height: '100%',
-        borderRadius: 14,
-        backgroundColor: 'rgba(255,255,255,0.2)', // Boş kare izi
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.4)',
-    },
-    slotImage: {
-        width: '100%',
-        height: '100%',
-        borderRadius: 14,
-    },
-    slotDeleteBadge: {
-        position: 'absolute',
-        top: -6,
-        right: -6,
-        backgroundColor: '#FF3B30',
-        borderRadius: 10,
-        width: 20,
-        height: 20,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 2,
-        borderColor: '#000'
-    },
 
-    // Alt Siyah / Tema Çekmecesi Kart Yapısı
+    // Alt Drawer
     drawerContainer: {
         width: '100%',
         borderTopLeftRadius: 36,
         borderTopRightRadius: 36,
-        paddingTop: 16, // Üst menüyle (2 küçük kare kutu) kaynaşmak için daraltıldı
+        paddingTop: 16,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: -10 },
         shadowOpacity: 0.1,
         shadowRadius: 20,
         elevation: 10,
     },
-    internalTabs: {
-        flexDirection: 'row',
-        justifyContent: 'flex-start',
-        paddingHorizontal: 30,
-        marginBottom: 30,
-    },
-    tabButton: {
+
+    // Pipeline Info Band
+    pipelineInfo: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginRight: 24,
+        justifyContent: 'center',
+        paddingHorizontal: 20,
+        marginBottom: 20,
+        gap: 6,
     },
-    tabText: {
-        fontSize: 16,
-        marginLeft: 6,
+    pipelineStep: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    pipelineStepText: {
+        fontSize: 12,
+        fontWeight: '600',
     },
 
-    // Fotoğraf / Deklanşör Düğmesi Dizilimi
+    // Fotoğraf / Deklanşör
     actionRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -541,7 +447,7 @@ const getDynamicStyles = (colors) => StyleSheet.create({
         width: 48,
         height: 48,
         borderRadius: 24,
-        backgroundColor: 'rgba(120, 120, 128, 0.16)', // Tasarım dilindeki soft gri arkaplan
+        backgroundColor: 'rgba(120, 120, 128, 0.16)',
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: 6,
@@ -585,7 +491,7 @@ const getDynamicStyles = (colors) => StyleSheet.create({
     // Analiz Overlay
     analyzingOverlay: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0, 0, 0, 0.75)',
+        backgroundColor: 'rgba(0, 0, 0, 0.80)',
         justifyContent: 'center',
         alignItems: 'center',
         zIndex: 100,
@@ -595,7 +501,7 @@ const getDynamicStyles = (colors) => StyleSheet.create({
         borderRadius: 24,
         padding: 32,
         alignItems: 'center',
-        width: 220,
+        width: 280,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 8 },
         shadowOpacity: 0.3,
@@ -604,7 +510,7 @@ const getDynamicStyles = (colors) => StyleSheet.create({
     },
     analyzingText: {
         color: colors.textMain || '#FFF',
-        fontSize: 16,
+        fontSize: 17,
         fontWeight: 'bold',
         marginTop: 16,
     },
@@ -612,6 +518,22 @@ const getDynamicStyles = (colors) => StyleSheet.create({
         color: colors.textMuted || '#888',
         fontSize: 13,
         marginTop: 4,
+        textAlign: 'center',
+    },
+    pipelineSteps: {
+        marginTop: 20,
+        width: '100%',
+        gap: 10,
+    },
+    stepItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    stepText: {
+        color: colors.textMuted || '#AAA',
+        fontSize: 13,
+        fontWeight: '500',
     },
 
 });
