@@ -164,7 +164,9 @@ def katman1_yaprak_tespit(yolo_model_path, image_path):
 def katman2_bitki_siniflandirma(plant_model_path, class_names_path, cropped_image):
     """
     Katman 2: MobileNet (Keras) ile bitki türü sınıflandırma
-    - 224x224 RGB float32 görüntü
+    - 224x224 RGB, pixel değerleri 0-255 (float32) olarak verilir.
+    - Model içinde Rescaling(1/127.5, offset=-1) katmanı bulunduğundan
+      DIŞARIDA herhangi bir normalize/preprocess_input YAPILMAZ.
     - class_names.txt'den sınıf ismi okunur
     """
     try:
@@ -180,19 +182,17 @@ def katman2_bitki_siniflandirma(plant_model_path, class_names_path, cropped_imag
         debug_path = os.path.join(debug_dir, "yolotest_fotosu.jpg")
         cropped_image.save(debug_path)
 
+        # RGB dönüşümü kontrolü
+        if cropped_image.mode != 'RGB':
+            cropped_image = cropped_image.convert('RGB')
+
         # Görüntüyü 224x224'e resize et
         img_resized = cropped_image.resize((224, 224), Image.LANCZOS)
 
-        # RGB dönüşümü kontrolü
-        if img_resized.mode != 'RGB':
-            img_resized = img_resized.convert('RGB')
-
-        # Görüntüyü array'e çevir
-        input_data = np.array(img_resized, dtype=np.float32)
-        input_data = np.expand_dims(input_data, axis=0)  # [1, 224, 224, 3]
-
-        # MobileNetV3 preprocess_input uygula
-        input_data = keras.applications.mobilenet_v3.preprocess_input(input_data)
+        # Ham 0-255 float32 array — model içindeki Rescaling katmanı normalize eder
+        # DIŞ preprocess_input KULLANILMAZ (çift normalizasyon hatası oluşur)
+        input_data = np.array(img_resized, dtype=np.float32)  # [224, 224, 3], değerler 0-255
+        input_data = np.expand_dims(input_data, axis=0)        # [1, 224, 224, 3]
 
         # Inference
         predictions = model.predict(input_data, verbose=0)
@@ -238,12 +238,13 @@ def katman2_bitki_siniflandirma(plant_model_path, class_names_path, cropped_imag
 def katman3_hastalik_tespit(disease_models_dir, bitki_turu, cropped_image):
     """
     Katman 3: Bitki türüne özel hastalık tespiti (Keras)
-    
-    Kurallar:
+
+    Preprocessing kuralları:
     1. Görüntü mutlaka RGB olacak.
     2. Input boyutu 224x224 olacak.
-    3. include_preprocessing=True kullanıldığı için ekstra preprocess yok.
-       Sadece RGB + 224x224 + float32 görüntü verilir.
+    3. Pixel değerleri 0-255 aralığında, float32 olarak verilecek.
+       Model içinde Rescaling(scale=1/127.5, offset=-1) katmanı bulunduğundan
+       DIŞARIDA normalize, /255 veya preprocess_input YAPILMAZ.
     4. Her model kendi class txt dosyasıyla eşleşir.
     5. Confidence < 0.70 ise düşük güven uyarısı verilir.
     6. Output array komple loglanır.
@@ -299,9 +300,10 @@ def katman3_hastalik_tespit(disease_models_dir, bitki_turu, cropped_image):
         # 2. 224x224 resize
         img_resized = cropped_image.resize((224, 224), Image.LANCZOS)
 
-        # 3. Float32 array (include_preprocessing=True olduğu için ekstra preprocess YOK)
-        input_data = np.array(img_resized, dtype=np.float32)
-        input_data = np.expand_dims(input_data, axis=0)  # [1, 224, 224, 3]
+        # 3. Ham 0-255 float32 array — model içindeki Rescaling katmanı normalize eder
+        #    DIŞ preprocess / /255 / normalize KULLANILMAZ
+        input_data = np.array(img_resized, dtype=np.float32)  # değerler 0-255
+        input_data = np.expand_dims(input_data, axis=0)        # [1, 224, 224, 3]
 
         # Inference
         predictions = model.predict(input_data, verbose=0)
