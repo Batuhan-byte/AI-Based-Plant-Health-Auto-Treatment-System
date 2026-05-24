@@ -13,10 +13,14 @@ import sys
 import json
 import os
 
-# Kritik: Tüm bilgi mesajlarını kapat (stdout'u kirletmesin)
+# Kritik: Tüm bilgi ve uyarı mesajlarını kapat (stdout/stderr kirletmesin)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # oneDNN CPU optimizasyon uyarılarını gizler
 os.environ['YOLO_VERBOSE'] = 'False'
 os.environ['TF_USE_LEGACY_KERAS'] = '1'
+
+import warnings
+warnings.filterwarnings('ignore')
 
 import numpy as np
 from PIL import Image

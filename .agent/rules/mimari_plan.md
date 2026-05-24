@@ -27,17 +27,34 @@ Bu proje, internet bağlantısına ihtiyaç duymadan (Edge AI) bitki hastalıkla
 ## Önerilen Temel Kod Dizin Yapısı
 
 ```text
-/AI-Based-Plant-...
+/AI-Based-Plant-...(VerdantAI)
 ├── .agent/rules/            # Uygulama tasarım ve geliştirme kuralları (.md)
-├── mobile_app/              # React Native Proje Dizini
+│   └── mobile_app/
+│       ├── ui-design.md     # Ana tasarım felsefesi (Hybrid Botanical Clean UI)
+│       ├── hooks.md         # Custom hook standartları ve dokümantasyonu
+│       ├── components.md    # Bileşen yazım standartları ve dokümantasyonu
+│       ├── dashboard/
+│       │   └── dashboard.md # Dashboard ekranı özel kuralları
+│       └── tabNavigate/
+├── mobile_app/              # React Native Proje Dizini (Expo)
 │   ├── assets/              # İkonlar, .tflite modelleri ve yerel videolar (MP4)
-│   ├── src/                 
-│   │   ├── components/      # Tekrar kullanılabilir arayüz bileşenleri
-│   │   ├── navigation/      # TabNavigator ve StackNavigator yapılandırması
-│   │   ├── screens/         # Ekranlar (Dashboard, Kamera, Topluluk, Profil vb.)
-│   │   ├── theme/           # Colors.js ve ThemeContext.js (Mod yönetimi)
-│   │   ├── services/        # Backend API, Konum ve Hava Durumu servisleri
-│   │   └── utils/           # Yardımcı fonksiyonlar
+│   └── src/
+│       ├── components/      # Tekrar kullanılabilir arayüz bileşenleri
+│       │   └── myplants/    # Dashboard'a ait bileşenler
+│       │       ├── ActionIcon.js
+│       │       ├── PlantItem.js
+│       │       ├── DiagnosisDetailModal.js
+│       │       └── DonationModal.js
+│       ├── hooks/           # Custom React hook'ları (iş mantığı + side-effect)
+│       │   ├── useWeather.js        # GPS + Open-Meteo hava durumu
+│       │   └── useSwipeModal.js     # PanResponder + Animated modal jesti
+│       ├── navigation/      # TabNavigator ve StackNavigator yapılandırması
+│       ├── screens/         # Ekranlar (MyPlantsScreen, CameraScreen, vb.)
+│       ├── styles/          # Merkezi stil fonksiyonları
+│       │   └── myPlantsStyles.js    # getDynamicStyles(colors)
+│       ├── theme/           # Colors.js ve ThemeContext.js (Mod yönetimi)
+│       ├── services/        # Backend API, Konum ve Hava Durumu servisleri
+│       └── utils/           # Yardımcı fonksiyonlar
 ```
 
 ## Doğrulama ve Test Planı

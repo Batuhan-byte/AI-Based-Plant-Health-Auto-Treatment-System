@@ -44,15 +44,15 @@ export default function DiagnosisResultScreen({ route, navigation }) {
 
                 {/* ═══ Pipeline Sonuç Kartları ═══ */}
 
-                {/* Katman 1: Yaprak Tespiti */}
+                {/* Yaprak Tespiti Kartı */}
                 <View style={styles.pipelineCard}>
                     <View style={styles.pipelineHeader}>
                         <View style={[styles.pipelineIconBox, { backgroundColor: '#34C75920' }]}>  
                             <MaterialCommunityIcons name="image-search-outline" size={22} color="#34C759" />
                         </View>
                         <View style={styles.pipelineHeaderText}>
-                            <Text style={styles.pipelineTitle}>Katman 1 — Yaprak Tespiti</Text>
-                            <Text style={styles.pipelineSubtitle}>YOLO Object Detection</Text>
+                            <Text style={styles.pipelineTitle}>Yaprak Algılama</Text>
+                            <Text style={styles.pipelineSubtitle}>Görsel üzerindeki yaprak taranıyor</Text>
                         </View>
                         <View style={[styles.statusBadge, { backgroundColor: k1.tespit_edildi ? '#34C75920' : '#FF3B3020' }]}>
                             <MaterialCommunityIcons 
@@ -61,73 +61,47 @@ export default function DiagnosisResultScreen({ route, navigation }) {
                                 color={k1.tespit_edildi ? '#34C759' : '#FF3B30'} 
                             />
                             <Text style={[styles.statusBadgeText, { color: k1.tespit_edildi ? '#34C759' : '#FF3B30' }]}>
-                                {k1.tespit_edildi ? 'Bulundu' : 'Bulunamadı'}
+                                {k1.tespit_edildi ? 'Başarılı' : 'Bulunamadı'}
                             </Text>
                         </View>
                     </View>
                     {k1.tespit_edildi && (
                         <View style={styles.pipelineDetails}>
                             <View style={styles.detailRow}>
-                                <Text style={styles.detailLabel}>Güven Oranı</Text>
+                                <Text style={styles.detailLabel}>Tarama Kalitesi</Text>
                                 <Text style={styles.detailValue}>%{k1.confidence}</Text>
-                            </View>
-                            <View style={styles.detailRow}>
-                                <Text style={styles.detailLabel}>Toplam Yaprak</Text>
-                                <Text style={styles.detailValue}>{k1.toplam_tespit} adet</Text>
                             </View>
                         </View>
                     )}
                 </View>
 
-                {/* Katman 2: Bitki Türü */}
+                {/* Bitki Türü Kartı */}
                 <View style={styles.pipelineCard}>
                     <View style={styles.pipelineHeader}>
                         <View style={[styles.pipelineIconBox, { backgroundColor: '#007AFF20' }]}>
                             <MaterialCommunityIcons name="leaf" size={22} color="#007AFF" />
                         </View>
                         <View style={styles.pipelineHeaderText}>
-                            <Text style={styles.pipelineTitle}>Katman 2 — Bitki Türü</Text>
-                            <Text style={styles.pipelineSubtitle}>MobileNet Sınıflandırma</Text>
+                            <Text style={styles.pipelineTitle}>Bitki Türü</Text>
+                            <Text style={styles.pipelineSubtitle}>Yapay zeka bitki sınıfını teşhis ediyor</Text>
                         </View>
                     </View>
                     <View style={styles.bitkiSonuc}>
                         <Text style={styles.bitkiAdi}>{k2.tur_tr || tahmin.bitki || '—'}</Text>
-                        <Text style={styles.bitkiKey}>{k2.tur || tahmin.bitki_key || ''}</Text>
                     </View>
-                    {/* Top 3 Bitki Türü */}
-                    {(k2.top3 && k2.top3.length > 0) ? (
-                        <View style={styles.top3Container}>
-                            {k2.top3.map((item, index) => (
-                                <View key={index} style={styles.top3Row}>
-                                    <Text style={[styles.top3Label, index === 0 && styles.top3LabelBold]}>{item.tur_tr}</Text>
-                                    <View style={styles.top3BarWrapper}>
-                                        <View style={styles.confidenceTrack}>
-                                            <View style={[styles.confidenceFill, { 
-                                                width: `${Math.min(item.confidence || 0, 100)}%`,
-                                                backgroundColor: index === 0 
-                                                    ? ((item.confidence || 0) > 80 ? '#34C759' : (item.confidence || 0) > 60 ? '#FF9500' : '#FF3B30')
-                                                    : '#888'
-                                            }]} />
-                                        </View>
-                                        <Text style={[styles.top3Percent, index === 0 && styles.top3PercentBold]}>%{item.confidence}</Text>
-                                    </View>
-                                </View>
-                            ))}
+                    {/* Tarama Güvenirliği */}
+                    <View style={styles.confidenceBar}>
+                        <View style={styles.confidenceTrack}>
+                            <View style={[styles.confidenceFill, { 
+                                width: `${Math.min(k2.confidence || 0, 100)}%`,
+                                backgroundColor: (k2.confidence || 0) > 80 ? '#34C759' : (k2.confidence || 0) > 60 ? '#FF9500' : '#FF3B30'
+                            }]} />
                         </View>
-                    ) : (
-                        <View style={styles.confidenceBar}>
-                            <View style={styles.confidenceTrack}>
-                                <View style={[styles.confidenceFill, { 
-                                    width: `${Math.min(k2.confidence || 0, 100)}%`,
-                                    backgroundColor: (k2.confidence || 0) > 80 ? '#34C759' : (k2.confidence || 0) > 60 ? '#FF9500' : '#FF3B30'
-                                }]} />
-                            </View>
-                            <Text style={styles.confidenceText}>%{k2.confidence || 0}</Text>
-                        </View>
-                    )}
+                        <Text style={styles.confidenceText}>%{k2.confidence || 0}</Text>
+                    </View>
                 </View>
 
-                {/* Katman 3: Hastalık Tespiti */}
+                         {/* Hastalık Tespiti Kartı */}
                 <View style={[styles.pipelineCard, k3.durum === 'model_yok' && styles.pipelineCardInactive]}>
                     <View style={styles.pipelineHeader}>
                         <View style={[styles.pipelineIconBox, { backgroundColor: 
@@ -150,8 +124,8 @@ export default function DiagnosisResultScreen({ route, navigation }) {
                             />
                         </View>
                         <View style={styles.pipelineHeaderText}>
-                            <Text style={styles.pipelineTitle}>Katman 3 — Hastalık Tespiti</Text>
-                            <Text style={styles.pipelineSubtitle}>Disease Classification</Text>
+                            <Text style={styles.pipelineTitle}>Sağlık Durumu Analizi</Text>
+                            <Text style={styles.pipelineSubtitle}>Yapay zeka yaprak sağlığını inceliyor</Text>
                         </View>
                         {k3.durum === 'tespit_edildi' && (
                             <View style={[styles.statusBadge, { backgroundColor: k3.saglikli ? '#34C75920' : '#FF3B3020' }]}>
@@ -173,36 +147,8 @@ export default function DiagnosisResultScreen({ route, navigation }) {
                                 <Text style={[styles.bitkiAdi, { color: k3.saglikli ? '#34C759' : '#FF3B30' }]}>
                                     {k3.hastalik_tr || 'Bilinmiyor'}
                                 </Text>
-                                <Text style={styles.bitkiKey}>{k3.hastalik || ''}</Text>
                             </View>
-                            {/* Top 3 Hastalık */}
-                            {(k3.top3 && k3.top3.length > 0) ? (
-                                <View style={styles.top3Container}>
-                                    {k3.top3.map((item, index) => {
-                                        const isSaglikli = item.hastalik?.toLowerCase() === 'healthy';
-                                        return (
-                                            <View key={index} style={styles.top3Row}>
-                                                <Text style={[styles.top3Label, index === 0 && styles.top3LabelBold]}>
-                                                    {item.hastalik_tr}
-                                                </Text>
-                                                <View style={styles.top3BarWrapper}>
-                                                    <View style={styles.confidenceTrack}>
-                                                        <View style={[styles.confidenceFill, { 
-                                                            width: `${Math.min(item.confidence || 0, 100)}%`,
-                                                            backgroundColor: index === 0
-                                                                ? (isSaglikli ? '#34C759' : '#FF3B30')
-                                                                : '#888'
-                                                        }]} />
-                                                    </View>
-                                                    <Text style={[styles.top3Percent, index === 0 && styles.top3PercentBold]}>
-                                                        %{item.confidence}
-                                                    </Text>
-                                                </View>
-                                            </View>
-                                        );
-                                    })}
-                                </View>
-                            ) : k3.confidence != null && (
+                            {k3.confidence != null && (
                                 <View style={styles.confidenceBar}>
                                     <View style={styles.confidenceTrack}>
                                         <View style={[styles.confidenceFill, { 

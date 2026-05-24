@@ -2,8 +2,10 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const aiService = require('./services/aiService');
 const diagnoseRoutes = require('./routes/diagnoseRoutes');
+const initializeDatabase = require('./config/dbInit');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -12,6 +14,14 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());                         // Tüm origin'lerden erişime izin ver
 app.use(express.json({ limit: '15mb' })); // JSON body parser (Base64 görseller için yüksek limit)
 
+// ─── Statik Görsel Klasörü Entegrasyonu ──────────────────
+const uploadsDir = path.join(__dirname, '..', 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    console.log('📁 \'uploads\' klasörü oluşturuldu.');
+}
+app.use('/uploads', express.static(uploadsDir));
+
 // ─── Routes ─────────────────────────────────────────────
 app.use('/api', diagnoseRoutes);
 
@@ -19,7 +29,7 @@ app.use('/api', diagnoseRoutes);
 app.get('/api/health', (req, res) => {
     res.json({
         durum: 'çalışıyor',
-        sunucu: 'PlantHealth Backend',
+        sunucu: 'VerdantAI Backend',
         zaman: new Date().toISOString()
     });
 });
@@ -44,15 +54,18 @@ app.use((err, req, res, next) => {
 
 // ─── Sunucuyu Başlat ────────────────────────────────────
 async function startServer() {
-    console.log('\n🌱 PlantHealth Backend başlatılıyor...\n');
+    console.log('\n🌱 VerdantAI Backend başlatılıyor...\n');
 
-    // 1. AI Modelini önceden belleğe yükle
+    // 1. Veritabanını kontrol et ve otomatik kur
+    await initializeDatabase();
+
+    // 2. AI Modelini önceden belleğe yükle
     const modelLoaded = await aiService.loadModel();
     if (!modelLoaded) {
         console.error('❌ Model yüklenemedi! Sunucu başlatılıyor ama tahmin yapılamaz.');
     }
 
-    // 2. Express sunucusunu başlat
+    // 3. Express sunucusunu başlat
     app.listen(PORT, '0.0.0.0', () => {
         console.log(`\n🚀 Sunucu http://localhost:${PORT} adresinde çalışıyor`);
         console.log(`📡 API Endpoint'leri:`);

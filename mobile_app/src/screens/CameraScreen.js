@@ -7,6 +7,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { Colors } from '../theme/colors';
+import { API_BASE } from '../config';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -27,8 +28,6 @@ export default function CameraScreen({ navigation }) {
 
     const cameraRef = useRef(null);
 
-    // Backend API URL (Fiziksel cihaz için bilgisayarın WiFi IP adresi)
-    const API_BASE = 'http://192.168.1.3:3000';
 
     // İzin isteme fonksiyonu - tek seferlik deneyin ardından Ayarlara Git moduna geç
     async function handlePermissionRequest() {
@@ -144,14 +143,38 @@ export default function CameraScreen({ navigation }) {
             setIsAnalyzing(true);
             setAnalyzeStep('Görüntü hazırlanıyor...');
 
-            // Fotoğrafı kaliteli JPEG'e dönüştür (YOLO kendi crop yapacak)
+            // Fotoğrafın gerçek boyutlarını alıp vizör oranına göre kırpalım
+            const initialManip = await ImageManipulator.manipulateAsync(
+                uri,
+                [],
+                { format: ImageManipulator.SaveFormat.JPEG, compress: 0.9 }
+            );
+            
+            const imgW = initialManip.width;
+            const imgH = initialManip.height;
+            
+            // Vizörün ekrandaki oranlarına göre kırpma hesapla (merkezleme)
+            const cropW = imgW * ((screenWidth - 100) / screenWidth);
+            const cropH = imgW * ((screenWidth - 60) / screenWidth);
+            const originX = (imgW - cropW) / 2;
+            const originY = (imgH - cropH) / 2;
+            
             const processed = await ImageManipulator.manipulateAsync(
                 uri,
-                [], // Artık crop/resize yok — YOLO bunu hallediyor
+                [
+                    {
+                        crop: {
+                            originX: Math.max(0, Math.round(originX)),
+                            originY: Math.max(0, Math.round(originY)),
+                            width: Math.min(imgW, Math.round(cropW)),
+                            height: Math.min(imgH, Math.round(cropH)),
+                        }
+                    }
+                ],
                 { format: ImageManipulator.SaveFormat.JPEG, compress: 0.9 }
             );
 
-            setAnalyzeStep('Yaprak aranıyor (YOLO)...');
+            setAnalyzeStep('Yaprak aranıyor...');
 
             const formData = new FormData();
             
@@ -307,22 +330,22 @@ export default function CameraScreen({ navigation }) {
                 <View style={styles.analyzingOverlay}>
                     <View style={styles.analyzingBox}>
                         <ActivityIndicator size="large" color={colors.accent} />
-                        <Text style={styles.analyzingText}>AI Analizi Yapılıyor</Text>
-                        <Text style={styles.analyzingSubText}>{analyzeStep || '3 katmanlı pipeline çalışıyor...'}</Text>
+                        <Text style={styles.analyzingText}>Yapay Zeka Analizi Çalışıyor</Text>
+                        <Text style={styles.analyzingSubText}>{analyzeStep || 'Analiz gerçekleştiriliyor...'}</Text>
 
-                        {/* Pipeline adımları göstergesi */}
+                        {/* Yapay Zeka Adımları Göstergesi */}
                         <View style={styles.pipelineSteps}>
                             <View style={styles.stepItem}>
                                 <MaterialCommunityIcons name="image-search-outline" size={18} color={colors.accent} />
-                                <Text style={styles.stepText}>YOLO Yaprak Tespiti</Text>
+                                <Text style={styles.stepText}>Yaprak Algılama</Text>
                             </View>
                             <View style={styles.stepItem}>
                                 <MaterialCommunityIcons name="leaf" size={18} color={colors.accent} />
-                                <Text style={styles.stepText}>Bitki Türü Tanıma</Text>
+                                <Text style={styles.stepText}>Bitki Türü Teşhisi</Text>
                             </View>
                             <View style={styles.stepItem}>
-                                <MaterialCommunityIcons name="clock-outline" size={18} color="#888" />
-                                <Text style={[styles.stepText, { color: '#888' }]}>Hastalık Analizi (Yakında)</Text>
+                                <MaterialCommunityIcons name="alert-circle-outline" size={18} color={colors.accent} />
+                                <Text style={styles.stepText}>Hastalık Analizi</Text>
                             </View>
                         </View>
                     </View>

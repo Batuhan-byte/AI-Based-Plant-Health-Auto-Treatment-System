@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "mobile_app",
-    "slug": "mobile_app",
+    "name": "VerdantAI",
+    "slug": "VerdantAI",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -9,11 +9,11 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "bundleIdentifier": "com.batuhan.planthealth",
+      "bundleIdentifier": "com.batuhan.verdantai",
       "supportsTablet": true
     },
     "android": {
-      "package": "com.batuhan.planthealth",
+      "package": "com.batuhan.verdantai",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -43,14 +43,14 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "PlantHealth, bitki türünüzü tanımak ve hastalıkları yapay zeka ile teşhis edebilmek için kameranıza erişim iznine ihtiyaç duyar.",
-          "microphonePermission": "PlantHealth videolar için mikrofona ihtiyaç duyar."
+          "cameraPermission": "VerdantAI, bitki türünüzü tanımak ve hastalıkları yapay zeka ile teşhis edebilmek için kameranıza erişim iznine ihtiyaç duyar.",
+          "microphonePermission": "VerdantAI videolar için mikrofona ihtiyaç duyar."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "PlantHealth, daha önce galerinizde kayıtlı olan bir bitki yaprağı fotoğrafını analiz edebilmek için fotoğraf kitaplığınıza erişim talep eder."
+          "photosPermission": "VerdantAI, daha önce galerinizde kayıtlı olan bir bitki yaprağı fotoğrafını analiz edebilmek için fotoğraf kitaplığınıza erişim talep eder."
         }
       ]
     ],
