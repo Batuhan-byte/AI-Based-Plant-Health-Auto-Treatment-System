@@ -20,6 +20,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { API_BASE } from '../config';
+import DiagnosisDetailModal from '../components/myplants/DiagnosisDetailModal';
 
 export default function SearchScreen() {
     const { theme } = useTheme();
@@ -31,7 +32,6 @@ export default function SearchScreen() {
     const [refreshing, setRefreshing] = useState(false);
     const [selectedItem, setSelectedItem] = useState(null);
     const [modalVisible, setModalVisible] = useState(false);
-    const [zoomVisible, setZoomVisible] = useState(false);
 
     // Dinamik stiller
     const styles = useMemo(() => getDynamicStyles(colors), [colors]);
@@ -200,167 +200,14 @@ export default function SearchScreen() {
             )}
 
             {/* DETAY MODALI */}
-            {selectedItem && (
-                <Modal
-                    animationType="slide"
-                    transparent={true}
-                    visible={modalVisible}
-                    onRequestClose={() => setModalVisible(false)}
-                >
-                    <View style={styles.modalOverlay}>
-                        <View style={styles.modalContent}>
-                            
-                            {/* Bottom Sheet Drag Handle */}
-                            <View style={styles.dragHandle} />
-
-                            {/* Modal Header */}
-                            <View style={styles.modalHeader}>
-                                <Text style={styles.modalTitle}>Teşhis Detayı</Text>
-                                <View style={styles.modalHeaderActions}>
-                                    {/* Çöp Kutusu Silme Butonu */}
-                                    <TouchableOpacity 
-                                        style={[styles.deleteModalButton, { marginRight: 16 }]} 
-                                        onPress={() => handleDelete(selectedItem.id)}
-                                        activeOpacity={0.7}
-                                    >
-                                        <MaterialCommunityIcons name="trash-can-outline" size={22} color="#FF3B30" />
-                                    </TouchableOpacity>
-                                    
-                                    {/* Kapat Butonu */}
-                                    <TouchableOpacity 
-                                        style={styles.closeButton} 
-                                        onPress={() => setModalVisible(false)}
-                                        activeOpacity={0.7}
-                                    >
-                                        <MaterialCommunityIcons name="close" size={20} color={colors.textMain} />
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-
-                            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScroll}>
-                                
-                                {/* Kırpılmış Yaprak Fotoğrafı (Kapsüllenmiş Kart) */}
-                                <TouchableOpacity 
-                                    style={styles.modalImageContainer}
-                                    onPress={() => setZoomVisible(true)}
-                                    activeOpacity={0.9}
-                                >
-                                    <Image 
-                                        source={{ uri: `${API_BASE}/uploads/${selectedItem.resim_yolu}` }} 
-                                        style={styles.modalImage} 
-                                    />
-                                    {/* Görsel Üzerindeki Akıllı Yüzen Kart */}
-                                    <View style={styles.imageFloatingBadge}>
-                                        <MaterialCommunityIcons name="leaf" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-                                        <Text style={styles.imageFloatingBadgeText}>
-                                            {selectedItem.bitki_adi_tr || selectedItem.bitki_adi}
-                                        </Text>
-                                    </View>
-                                    
-                                    {/* Büyütme İkonu */}
-                                    <View style={styles.zoomIconBadge}>
-                                        <MaterialCommunityIcons name="magnify-plus-outline" size={18} color="#FFFFFF" />
-                                    </View>
-                                </TouchableOpacity>
-
-                                {/* Teşhis Özeti */}
-                                <View style={styles.sectionCard}>
-                                    <View style={styles.sectionHeaderRow}>
-                                        <MaterialCommunityIcons name="information-outline" size={20} color={colors.accent} style={{ marginRight: 8 }} />
-                                        <Text style={styles.sectionTitle}>Bitki Bilgisi</Text>
-                                    </View>
-                                    
-                                    <View style={styles.detailRow}>
-                                        <View style={styles.rowLabelGroup}>
-                                            <MaterialCommunityIcons name="leaf-maple" size={18} color={colors.textMuted} style={{ marginRight: 8 }} />
-                                            <Text style={styles.detailLabel}>Bitki Türü</Text>
-                                        </View>
-                                        <Text style={styles.detailValue}>{selectedItem.bitki_adi_tr || selectedItem.bitki_adi}</Text>
-                                    </View>
-                                    
-                                    <View style={styles.detailRow}>
-                                        <View style={styles.rowLabelGroup}>
-                                            <MaterialCommunityIcons name="shield-check-outline" size={18} color={colors.textMuted} style={{ marginRight: 8 }} />
-                                            <Text style={styles.detailLabel}>Analiz Güvenilirliği</Text>
-                                        </View>
-                                        <Text style={styles.detailValue}>%{parseFloat(selectedItem.bitki_guven).toFixed(1)}</Text>
-                                    </View>
-                                </View>
-
-                                {/* Hastalık Durumu */}
-                                <View style={styles.sectionCard}>
-                                    <View style={styles.sectionHeaderRow}>
-                                        <MaterialCommunityIcons 
-                                            name="heart-pulse" 
-                                            size={20} 
-                                            color={selectedItem.hastalik_durum === 'saglikli' || selectedItem.hastalik_adi === 'Healthy' ? '#34C759' : '#FF3B30'} 
-                                            style={{ marginRight: 8 }} 
-                                        />
-                                        <Text style={styles.sectionTitle}>Hastalık Durumu</Text>
-                                    </View>
-                                    
-                                    <View style={styles.detailRow}>
-                                        <View style={styles.rowLabelGroup}>
-                                            <MaterialCommunityIcons name="alert-decagram-outline" size={18} color={colors.textMuted} style={{ marginRight: 8 }} />
-                                            <Text style={styles.detailLabel}>Durum</Text>
-                                        </View>
-                                        <Text style={[
-                                            styles.detailValue, 
-                                            { color: selectedItem.hastalik_durum === 'saglikli' || selectedItem.hastalik_adi === 'Healthy' ? '#34C759' : '#FF3B30' }
-                                        ]}>
-                                            {selectedItem.hastalik_durum === 'saglikli' || selectedItem.hastalik_adi === 'Healthy' 
-                                                ? 'Sağlıklı Bitki' 
-                                                : (selectedItem.hastalik_adi_tr || 'Hastalık Tespit Edildi')}
-                                        </Text>
-                                    </View>
-                                    
-                                    {selectedItem.hastalik_durum === 'tespit_edildi' && selectedItem.hastalik_adi !== 'Healthy' && (
-                                        <View style={styles.detailRow}>
-                                            <View style={styles.rowLabelGroup}>
-                                                <MaterialCommunityIcons name="target" size={18} color={colors.textMuted} style={{ marginRight: 8 }} />
-                                                <Text style={styles.detailLabel}>Teşhis Kesinliği</Text>
-                                            </View>
-                                            <Text style={styles.detailValue}>%{parseFloat(selectedItem.hastalik_guven).toFixed(1)}</Text>
-                                        </View>
-                                    )}
-                                    
-                                    <View style={styles.detailRow}>
-                                        <View style={styles.rowLabelGroup}>
-                                            <MaterialCommunityIcons name="calendar-clock" size={18} color={colors.textMuted} style={{ marginRight: 8 }} />
-                                            <Text style={styles.detailLabel}>Analiz Tarihi</Text>
-                                        </View>
-                                        <Text style={styles.detailValue}>{formatDate(selectedItem.tarih)}</Text>
-                                    </View>
-                                </View>
-
-                                {/* Tedavi Önerisi */}
-                                <View style={[styles.sectionCard, styles.treatmentCard]}>
-                                    <View style={styles.treatmentTitleRow}>
-                                        <MaterialCommunityIcons name="shield-star" size={24} color="#FFFFFF" style={{ marginRight: 8 }} />
-                                        <Text style={styles.treatmentTitle}>Otonom Tedavi Önerisi</Text>
-                                    </View>
-                                    <Text style={styles.treatmentText}>{selectedItem.tedavi_onerisi}</Text>
-                                </View>
-
-                            </ScrollView>
-                        </View>
-
-                        {/* BÜYÜTÜLMÜŞ RESİM MODALI (100% Ekranı Kaplayan Zoom Overlay) */}
-                        {zoomVisible && (
-                            <View style={styles.zoomOverlayAbsolute}>
-                                <TouchableOpacity style={styles.zoomCloseButton} onPress={() => setZoomVisible(false)}>
-                                    <MaterialCommunityIcons name="close" size={28} color="#FFFFFF" />
-                                </TouchableOpacity>
-                                <Image 
-                                    source={{ uri: `${API_BASE}/uploads/${selectedItem.resim_yolu}` }} 
-                                    style={styles.zoomImage} 
-                                    resizeMode="contain"
-                                />
-                            </View>
-                        )}
-                    </View>
-                </Modal>
-            )}
+            <DiagnosisDetailModal
+                visible={modalVisible}
+                selectedItem={selectedItem}
+                onClose={() => { setModalVisible(false); setSelectedItem(null); }}
+                onDelete={handleDelete}
+                styles={styles}
+                colors={colors}
+            />
         </SafeAreaView>
     );
 }

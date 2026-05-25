@@ -1,7 +1,9 @@
 const fs = require('fs');
+const { toDiagnosisResponse } = require('../dto/diagnosisDto');
 const path = require('path');
 const db = require('../config/db');
 const aiService = require('../services/aiService');
+const logger = require('../utils/logger');
 
 // Türkçe Tedavi Önerileri Kütüphanesi
 const TREATMENT_RECOMMENDATIONS = {
@@ -25,6 +27,7 @@ const TREATMENT_RECOMMENDATIONS = {
 /**
  * POST /api/diagnose
  * Fotoğrafı alır, 3 katmanlı AI pipeline'a gönderir, diske resim kaydeder ve DB'ye yazar.
+ * Veritabanı kesintisi durumunda Graceful Degradation uygulayarak analiz sonucunu kesintisiz döndürür.
  */
 async function diagnose(req, res) {
     try {
@@ -35,47 +38,37 @@ async function diagnose(req, res) {
             });
         }
 
-        console.log(`\n📸 Fotoğraf alındı: ${req.file.originalname} (${(req.file.size / 1024).toFixed(1)} KB)`);
-        console.log('🔄 3 Katmanlı AI Pipeline başlatılıyor...');
+        logger.info(`📸 Fotoğraf alındı: ${req.file.originalname} (${(req.file.size / 1024).toFixed(1)} KB)`);
+        logger.info('🔄 3 Katmanlı AI Pipeline başlatılıyor...');
 
-        // AI Pipeline'ı çağır (Python scripti tetikler)
+        // AI Pipeline'ı çağır (Python Daemon'a HTTP isteği yapar)
         const result = await aiService.predict(req.file.buffer);
 
         if (!result.basarili) {
-            console.log(`⚠️ Pipeline Başarısız: ${result.hata}`);
+            logger.warn(`⚠️ AI Çıkarım Pipeline Başarısız: ${result.hata}`);
             return res.json(result);
         }
 
-        console.log(`✅ Pipeline Tamamlandı:`);
-        console.log(`   🍃 Yaprak: Tespit edildi (%${result.katman1_yaprak.confidence})`);
-        console.log(`   🌿 Bitki: ${result.katman2_bitki.tur_tr} (%${result.katman2_bitki.confidence})`);
+        logger.success('✅ Pipeline başarıyla tamamlandı!');
         
-        if (result.katman3_hastalik.durum === 'tespit_edildi') {
-            const emoji = result.katman3_hastalik.saglikli ? '✅' : '🔴';
-            console.log(`   🔬 Hastalık: ${emoji} ${result.katman3_hastalik.hastalik_tr} (%${result.katman3_hastalik.confidence})\n`);
-        } else {
-            console.log(`   🔬 Hastalık: ${result.katman3_hastalik.durum} - ${result.katman3_hastalik.mesaj || ''}\n`);
-        }
-
         // ─── Veritabanı ve Görsel Kaydetme İşlemleri ───────────────────────
         let filename = null;
         let dbSaved = false;
         let dbId = null;
         let tedaviOnerisi = 'Bitki veya hastalık tam tespit edilemediği için tedavi önerisi oluşturulamadı.';
+        
+        filename = `img_${Date.now()}_${result.katman2_bitki.tur || 'plant'}.jpg`;
+        const savePath = path.join(__dirname, '..', '..', 'uploads', filename);
 
         try {
-            // 1. Görseli diske yaz (uploads klasörüne)
-            filename = `img_${Date.now()}_${result.katman2_bitki.tur || 'plant'}.jpg`;
-            const savePath = path.join(__dirname, '..', '..', 'uploads', filename);
-            
-            // YOLO tarafından kırpılan ve repo kök dizinine kaydedilen 'yolotest_fotosu.jpg' dosyasını kopyala
-            const cropSourcePath = path.join(__dirname, '..', '..', '..', 'yolotest_fotosu.jpg');
-            if (fs.existsSync(cropSourcePath)) {
-                fs.copyFileSync(cropSourcePath, savePath);
-                console.log(`💾 YOLO Yaprak Kesimi uploads klasörüne kopyalandı: ${filename}`);
+            // 1. Görseli diske yaz (uploads klasörüne - Asenkron I/O)
+            if (result.katman1_yaprak && result.katman1_yaprak.crop_base64) {
+                const cropBuffer = Buffer.from(result.katman1_yaprak.crop_base64, 'base64');
+                await fs.promises.writeFile(savePath, cropBuffer);
+                logger.info(`💾 YOLO Yaprak Kesimi (In-Memory Base64) uploads klasörüne kaydedildi: ${filename}`);
             } else {
-                fs.writeFileSync(savePath, req.file.buffer);
-                console.log(`💾 Orijinal görüntü diske kaydedildi (YOLO crop bulunamadı): ${filename}`);
+                await fs.promises.writeFile(savePath, req.file.buffer);
+                logger.info(`💾 Orijinal görüntü diske kaydedildi (YOLO crop bulunamadı): ${filename}`);
             }
 
             // 2. Tedavi Önerisini belirle
@@ -91,53 +84,59 @@ async function diagnose(req, res) {
                 tedaviOnerisi = TREATMENT_RECOMMENDATIONS['Healthy'];
             }
 
-            // 3. PostgreSQL veritabanına kaydet
-            const insertQuery = `
-                INSERT INTO diagnoses (
-                    yaprak_guven, bitki_adi, bitki_adi_tr, bitki_guven,
-                    hastalik_durum, hastalik_adi, hastalik_adi_tr, hastalik_guven,
-                    resim_yolu, tedavi_onerisi
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                RETURNING id;
-            `;
+            // 3. PostgreSQL veritabanına kaydet (Graceful Degradation ile)
+            try {
+                if (db.isDbConnected === false) {
+                    throw new Error('Veritabanı bağlantısı aktif değil (Offline Mode).');
+                }
 
-            const insertParams = [
-                result.katman1_yaprak.confidence,
-                result.katman2_bitki.tur,
-                result.katman2_bitki.tur_tr,
-                result.katman2_bitki.confidence,
-                result.katman3_hastalik.durum,
-                result.katman3_hastalik.hastalik,
-                result.katman3_hastalik.hastalik_tr,
-                result.katman3_hastalik.confidence,
-                filename,
-                tedaviOnerisi
-            ];
+                const insertQuery = `
+                    INSERT INTO diagnoses (
+                        yaprak_guven, bitki_adi, bitki_adi_tr, bitki_guven,
+                        hastalik_durum, hastalik_adi, hastalik_adi_tr, hastalik_guven,
+                        resim_yolu, tedavi_onerisi
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                    RETURNING id;
+                `;
 
-            const dbResult = await db.query(insertQuery, insertParams);
-            dbId = dbResult.rows[0].id;
-            dbSaved = true;
-            console.log(`📝 Teşhis veritabanına kaydedildi. Kayıt ID: ${dbId}`);
+                const insertParams = [
+                    result.katman1_yaprak.confidence,
+                    result.katman2_bitki.tur,
+                    result.katman2_bitki.tur_tr,
+                    result.katman2_bitki.confidence,
+                    result.katman3_hastalik.durum,
+                    result.katman3_hastalik.hastalik,
+                    result.katman3_hastalik.hastalik_tr,
+                    result.katman3_hastalik.confidence,
+                    filename,
+                    tedaviOnerisi
+                ];
 
-        } catch (dbError) {
-            console.error('❌ Veritabanına veya diske kaydetme başarısız oldu:', dbError.message);
-            // AI sonucunu kullanıcının görmesini engellemiyoruz, sadece logluyoruz
+                const dbResult = await db.query(insertQuery, insertParams);
+                dbId = dbResult.rows[0].id;
+                dbSaved = true;
+                logger.success(`📝 Teşhis veritabanına başarıyla kaydedildi. Kayıt ID: ${dbId}`);
+            } catch (dbError) {
+                // HATA TOLERANSI (Fail-Safe): Veritabanı hatasında resmi silmiyoruz. 
+                // İstemciye tahmin sonucunu başarıyla dönüyoruz, veritabanı kaydının başarısız olduğunu işaretliyoruz.
+                logger.warn(`⚠️ Veritabanı bağlantısı yok veya kayıt başarısız oldu. Teşhis çevrimdışı modda (offline-mode) tamamlanıyor. Hata: ${dbError.message}`);
+                dbId = null;
+                dbSaved = false;
+            }
+
+        } catch (fileError) {
+            logger.error('❌ Resim yazma veya işleme hatası (Disk I/O)', fileError);
         }
 
-        // Response nesnesini veritabanı bilgileriyle genişlet
-        return res.json({
-            ...result,
-            veritabani_kayitli: dbSaved,
-            kayit_id: dbId,
-            resim_yolu: filename,
-            tedavi_onerisi: tedaviOnerisi
-        });
+        // Response nesnesini DTO yardımıyla biçimlendirerek kararlı API çıktısı ver
+        const responsePayload = toDiagnosisResponse(result, dbId, filename, tedaviOnerisi);
+        return res.json(responsePayload);
 
     } catch (error) {
-        console.error('❌ Pipeline hatası:', error);
+        logger.error('Ana teşhis akış hatası', error);
         return res.status(500).json({
             basarili: false,
-            hata: 'Fotoğraf analiz edilirken bir hata oluştu.',
+            hata: 'Fotoğraf analiz edilirken beklenmeyen bir hata oluştu.',
             detay: error.message
         });
     }
@@ -149,6 +148,13 @@ async function diagnose(req, res) {
  */
 async function getHistory(req, res) {
     try {
+        if (db.isDbConnected === false) {
+            return res.status(503).json({
+                basarili: false,
+                hata: 'Veritabanı şu anda çevrimdışı. Teşhis geçmişi görüntülenemiyor.'
+            });
+        }
+
         const queryText = 'SELECT * FROM diagnoses ORDER BY tarih DESC';
         const dbResult = await db.query(queryText);
         
@@ -158,7 +164,7 @@ async function getHistory(req, res) {
             gecmis: dbResult.rows
         });
     } catch (error) {
-        console.error('❌ Teşhis geçmişi alınamadı:', error);
+        logger.error('Teşhis geçmişi alınamadı', error);
         return res.status(500).json({
             basarili: false,
             hata: 'Teşhis geçmişi alınırken bir veritabanı hatası oluştu.',
@@ -174,6 +180,13 @@ async function getHistory(req, res) {
 async function deleteHistory(req, res) {
     const { id } = req.params;
     try {
+        if (db.isDbConnected === false) {
+            return res.status(503).json({
+                basarili: false,
+                hata: 'Veritabanı şu anda çevrimdışı. Kayıt silme işlemi gerçekleştirilemiyor.'
+            });
+        }
+
         // 1. Önce görsel dosya adını al
         const findQuery = 'SELECT resim_yolu FROM diagnoses WHERE id = $1';
         const findRes = await db.query(findQuery, [id]);
@@ -181,7 +194,8 @@ async function deleteHistory(req, res) {
         if (findRes.rowCount === 0) {
             return res.status(404).json({
                 basarili: false,
-                hata: 'Silinmek istenen kayıt bulunamadı.'
+                hata: 'Silinmek istenen kayıt bulunamadı.',
+                talep_edilen_id: id
             });
         }
         
@@ -190,23 +204,27 @@ async function deleteHistory(req, res) {
         // 2. Veritabanından sil
         const deleteQuery = 'DELETE FROM diagnoses WHERE id = $1';
         await db.query(deleteQuery, [id]);
-        console.log(`❌ Teşhis kaydı silindi. ID: ${id}`);
+        logger.success(`❌ Teşhis kaydı veritabanından silindi. ID: ${id}`);
         
-        // 3. Görseli diskten temizle
+        // 3. Görseli diskten temizle (Asenkron I/O)
         if (filename) {
             const filePath = path.join(__dirname, '..', '..', 'uploads', filename);
-            if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
-                console.log(`🗑️ Teşhis resmi diskten silindi: ${filename}`);
+            try {
+                await fs.promises.access(filePath);
+                await fs.promises.unlink(filePath);
+                logger.success(`🗑️ Teşhis resmi diskten silindi: ${filename}`);
+            } catch (fileErr) {
+                logger.warn(`⚠️ Dosya silinemedi veya zaten yok: ${filename} | Hata: ${fileErr.message}`);
             }
         }
         
         return res.json({
             basarili: true,
-            mesaj: 'Teşhis kaydı ve ilişkili görsel başarıyla silindi.'
+            mesaj: 'Teşhis kaydı ve ilişkili görsel başarıyla silindi.',
+            silinen_id: id
         });
     } catch (error) {
-        console.error('❌ Teşhis kaydı silinirken hata:', error);
+        logger.error(`Teşhis kaydı silinirken hata oluştu (ID: ${id})`, error);
         return res.status(500).json({
             basarili: false,
             hata: 'Kayıt silinirken bir hata oluştu.',
@@ -229,7 +247,7 @@ function getLabels(req, res) {
             not: 'Hastalık tespiti aktif: apple, cherry, corn, grape, potato, tomato'
         });
     } catch (error) {
-        console.error('❌ Bitki listesi hatası:', error);
+        logger.error('Bitki listesi alınırken hata oluştu', error);
         return res.status(500).json({
             basarili: false,
             hata: 'Bitki listesi alınamadı.'

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, Animated, ScrollView, Image, TouchableOpacity, Modal } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSwipeModal } from '../../hooks/useSwipeModal';
@@ -19,6 +19,19 @@ import { API_BASE } from '../../config';
  */
 export default function DiagnosisDetailModal({ visible, selectedItem, onClose, onDelete, styles, colors }) {
     const { swipePanResponder, closeModal, handleScrollEnd, animatedStyle } = useSwipeModal(onClose);
+    const [zoomVisible, setZoomVisible] = useState(false);
+
+    // Modal kapandığında zoom durumunu sıfırla
+    useEffect(() => {
+        if (!visible) {
+            setZoomVisible(false);
+        }
+    }, [visible]);
+
+    const handleClose = () => {
+        setZoomVisible(false);
+        closeModal();
+    };
 
     const formatDate = (isoString) => {
         if (!isoString) return '—';
@@ -43,7 +56,7 @@ export default function DiagnosisDetailModal({ visible, selectedItem, onClose, o
             animationType="slide"
             transparent={true}
             visible={visible}
-            onRequestClose={closeModal}
+            onRequestClose={handleClose}
         >
             <View style={styles.modalOverlay}>
                 <Animated.View style={[styles.modalContent, animatedStyle]}>
@@ -69,7 +82,7 @@ export default function DiagnosisDetailModal({ visible, selectedItem, onClose, o
                             {/* Kapat */}
                             <TouchableOpacity
                                 style={styles.closeButton}
-                                onPress={closeModal}
+                                onPress={handleClose}
                                 activeOpacity={0.7}
                             >
                                 <MaterialCommunityIcons name="close" size={20} color={colors.textMain} />
@@ -86,7 +99,11 @@ export default function DiagnosisDetailModal({ visible, selectedItem, onClose, o
                         alwaysBounceVertical={true}
                     >
                         {/* Fotoğraf Kartı */}
-                        <TouchableOpacity style={styles.modalImageContainer} activeOpacity={0.9}>
+                        <TouchableOpacity 
+                            style={styles.modalImageContainer} 
+                            activeOpacity={0.9}
+                            onPress={() => setZoomVisible(true)}
+                        >
                             <Image
                                 source={{ uri: `${API_BASE}/uploads/${selectedItem.resim_yolu}` }}
                                 style={styles.modalImage}
@@ -172,6 +189,20 @@ export default function DiagnosisDetailModal({ visible, selectedItem, onClose, o
                         </View>
                     </ScrollView>
                 </Animated.View>
+
+                {/* BÜYÜTÜLMÜŞ RESİM MODALI (100% Ekranı Kaplayan Zoom Overlay) */}
+                {zoomVisible && (
+                    <View style={styles.zoomOverlayAbsolute}>
+                        <TouchableOpacity style={styles.zoomCloseButton} onPress={() => setZoomVisible(false)}>
+                            <MaterialCommunityIcons name="close" size={28} color="#FFFFFF" />
+                        </TouchableOpacity>
+                        <Image 
+                            source={{ uri: `${API_BASE}/uploads/${selectedItem.resim_yolu}` }} 
+                            style={styles.zoomImage} 
+                            resizeMode="contain"
+                        />
+                    </View>
+                )}
             </View>
         </Modal>
     );

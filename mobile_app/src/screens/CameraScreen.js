@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Platform, StatusBar, Dimensions, Image, Alert, Linking, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -10,6 +10,20 @@ import { Colors } from '../theme/colors';
 import { API_BASE } from '../config';
 
 const { width: screenWidth } = Dimensions.get('window');
+
+// Resim boyutlarını in-memory disk yazması yapmadan alan yardımcı fonksiyon
+const getImageSize = (uri) => {
+    return new Promise((resolve) => {
+        Image.getSize(
+            uri,
+            (width, height) => resolve({ width, height }),
+            (error) => {
+                console.warn("Resim boyutları Image.getSize ile alınamadı, varsayılanlar kullanılacak:", error);
+                resolve({ width: 1080, height: 1920 }); // Güvenli fallback
+            }
+        );
+    });
+};
 
 export default function CameraScreen({ navigation }) {
     const { theme } = useTheme();
@@ -27,12 +41,23 @@ export default function CameraScreen({ navigation }) {
     const insets = useSafeAreaInsets();
 
     const cameraRef = useRef(null);
+    const isMountedRef = useRef(true);
+    const abortControllerRef = useRef(null);
 
+    // Bileşen mount ve unmount takibi + AbortController temizliği
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+            }
+        };
+    }, []);
 
     // İzin isteme fonksiyonu - tek seferlik deneyin ardından Ayarlara Git moduna geç
-    async function handlePermissionRequest() {
+    const handlePermissionRequest = useCallback(async () => {
         if (hasAsked || (permission && !permission.canAskAgain)) {
-            // Daha önce sorduk ve reddedildi, artık sistem ayarlarına yönlendir
             Alert.alert(
                 "Kamera Erişimi Kapalı",
                 "Kamera iznini daha önce reddetmiş görünüyorsunuz. Bitkilerinizi tanıyabilmemiz için lütfen uygulama ayarlarından kamera erişimini açın.",
@@ -42,12 +67,163 @@ export default function CameraScreen({ navigation }) {
                 ]
             );
         } else {
-            // İlk kez soruyoruz
             setHasAsked(true);
-            const result = await requestPermission();
-            // Hâlâ reddedildiyse artık buton "Ayarlara Git" olacak (hasAsked = true)
+            await requestPermission();
         }
-    }
+    }, [hasAsked, permission, requestPermission]);
+
+    const toggleCameraFacing = useCallback(() => {
+        setFacing(current => (current === 'back' ? 'front' : 'back'));
+    }, []);
+
+    const toggleFlash = useCallback(() => {
+        setFlash(current => (current === 'off' ? 'on' : 'off'));
+    }, []);
+
+    // Fotoğrafı backend'e gönder ve 3 katmanlı AI pipeline sonucu al
+    const analyzePhoto = useCallback(async (uri) => {
+        // Varsa önceki yarım kalmış isteği iptal et
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        abortControllerRef.current = new AbortController();
+        const { signal } = abortControllerRef.current;
+
+        try {
+            if (isMountedRef.current) {
+                setIsAnalyzing(true);
+                setAnalyzeStep('Görüntü hazırlanıyor...');
+            }
+
+            // [PERFORMANCE FIX]: İlk manipulateAsync call kaldırıldı! Resim boyutu in-memory Image.getSize ile alınıyor.
+            const { width: imgW, height: imgH } = await getImageSize(uri);
+            
+            // Vizörün ekrandaki oranlarına göre kırpma hesapla (merkezleme)
+            const cropW = imgW * ((screenWidth - 100) / screenWidth);
+            const cropH = imgW * ((screenWidth - 60) / screenWidth);
+            const originX = (imgW - cropW) / 2;
+            const originY = (imgH - cropH) / 2;
+            
+            const processed = await ImageManipulator.manipulateAsync(
+                uri,
+                [
+                    {
+                        crop: {
+                            originX: Math.max(0, Math.round(originX)),
+                            originY: Math.max(0, Math.round(originY)),
+                            width: Math.min(imgW, Math.round(cropW)),
+                            height: Math.min(imgH, Math.round(cropH)),
+                        }
+                    }
+                ],
+                { format: ImageManipulator.SaveFormat.JPEG, compress: 0.9 }
+            );
+
+            if (isMountedRef.current) {
+                setAnalyzeStep('Yaprak aranıyor...');
+            }
+
+            const formData = new FormData();
+            
+            if (Platform.OS === 'web') {
+                const res = await fetch(processed.uri, { signal });
+                const blob = await res.blob();
+                formData.append('image', blob, 'plant_photo.jpg');
+            } else {
+                formData.append('image', {
+                    uri: processed.uri,
+                    type: 'image/jpeg',
+                    name: 'plant_photo.jpg'
+                });
+            }
+
+            const response = await fetch(`${API_BASE}/api/diagnose`, {
+                method: 'POST',
+                body: formData,
+                signal
+            });
+
+            const result = await response.json();
+
+            if (isMountedRef.current) {
+                if (result.basarili) {
+                    navigation.navigate('DiagnosisResult', {
+                        result: result,
+                        photoUri: uri
+                    });
+                } else {
+                    if (result.dusuk_confidence) {
+                        Alert.alert(
+                            "Emin Değilim",
+                            "Bitki türü yeterince güvenilir tespit edilemedi. Lütfen yaprağı daha yakından ve net bir şekilde çekin.",
+                            [{ text: "Tekrar Dene" }]
+                        );
+                    } else {
+                        Alert.alert("Hata", result.hata || "Analiz yapılamadı.");
+                    }
+                }
+            }
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.log("Analiz işlemi kullanıcı tarafından iptal edildi.");
+                return;
+            }
+            console.error("API Hatası:", error);
+            if (isMountedRef.current) {
+                Alert.alert(
+                    "Bağlantı Hatası",
+                    "Sunucuya bağlanılamadı. Lütfen backend sunucusunun çalıştığından emin olun."
+                );
+            }
+        } finally {
+            if (isMountedRef.current) {
+                setIsAnalyzing(false);
+                setAnalyzeStep('');
+            }
+        }
+    }, [navigation]);
+
+    // Galeriden fotoğraf seçimi
+    const pickImage = useCallback(async () => {
+        let result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: false, // YOLO zaten yaprağı bulacağı için crop gereksiz
+            quality: 0.9,
+        });
+
+        if (!result.canceled) {
+            await analyzePhoto(result.assets[0].uri);
+        }
+    }, [analyzePhoto]);
+
+    // Kamera ile fotoğraf çekimi
+    const takePicture = useCallback(async () => {
+        if (cameraRef.current) {
+            try {
+                const photo = await cameraRef.current.takePictureAsync({
+                    quality: 0.9,
+                    base64: false
+                });
+
+                await analyzePhoto(photo.uri);
+            } catch (error) {
+                console.error("Fotoğraf çekilirken hata:", error);
+            }
+        }
+    }, [analyzePhoto]);
+
+    // [PERFORMANCE FIX]: Kamera vizörü memoize edildi. 
+    // Böylece 'isAnalyzing' ve 'analyzeStep' güncellemelerinde native kamera katmanı gereksiz yere tekrar render edilmez, donma ve pil tüketimi önlenir.
+    const memoizedCamera = useMemo(() => {
+        return (
+            <CameraView
+                style={StyleSheet.absoluteFillObject}
+                facing={facing}
+                flash={flash}
+                ref={cameraRef}
+            />
+        );
+    }, [facing, flash]);
 
     // İzin henüz yüklenmedi
     if (!permission) {
@@ -100,143 +276,10 @@ export default function CameraScreen({ navigation }) {
         );
     }
 
-    function toggleCameraFacing() {
-        setFacing(current => (current === 'back' ? 'front' : 'back'));
-    }
-
-    function toggleFlash() {
-        setFlash(current => (current === 'off' ? 'on' : 'off'));
-    }
-
-    // Galeriden fotoğraf seçimi
-    async function pickImage() {
-        let result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
-            allowsEditing: false, // YOLO zaten yaprağı bulacağı için crop gereksiz
-            quality: 0.9,
-        });
-
-        if (!result.canceled) {
-            await analyzePhoto(result.assets[0].uri);
-        }
-    }
-
-    // Kamera ile fotoğraf çekimi
-    async function takePicture() {
-        if (cameraRef.current) {
-            try {
-                const photo = await cameraRef.current.takePictureAsync({
-                    quality: 0.9,
-                    base64: false
-                });
-
-                await analyzePhoto(photo.uri);
-            } catch (error) {
-                console.error("Fotoğraf çekilirken hata:", error);
-            }
-        }
-    }
-
-    // Fotoğrafı backend'e gönder ve 3 katmanlı AI pipeline sonucu al
-    async function analyzePhoto(uri) {
-        try {
-            setIsAnalyzing(true);
-            setAnalyzeStep('Görüntü hazırlanıyor...');
-
-            // Fotoğrafın gerçek boyutlarını alıp vizör oranına göre kırpalım
-            const initialManip = await ImageManipulator.manipulateAsync(
-                uri,
-                [],
-                { format: ImageManipulator.SaveFormat.JPEG, compress: 0.9 }
-            );
-            
-            const imgW = initialManip.width;
-            const imgH = initialManip.height;
-            
-            // Vizörün ekrandaki oranlarına göre kırpma hesapla (merkezleme)
-            const cropW = imgW * ((screenWidth - 100) / screenWidth);
-            const cropH = imgW * ((screenWidth - 60) / screenWidth);
-            const originX = (imgW - cropW) / 2;
-            const originY = (imgH - cropH) / 2;
-            
-            const processed = await ImageManipulator.manipulateAsync(
-                uri,
-                [
-                    {
-                        crop: {
-                            originX: Math.max(0, Math.round(originX)),
-                            originY: Math.max(0, Math.round(originY)),
-                            width: Math.min(imgW, Math.round(cropW)),
-                            height: Math.min(imgH, Math.round(cropH)),
-                        }
-                    }
-                ],
-                { format: ImageManipulator.SaveFormat.JPEG, compress: 0.9 }
-            );
-
-            setAnalyzeStep('Yaprak aranıyor...');
-
-            const formData = new FormData();
-            
-            if (Platform.OS === 'web') {
-                // Web'de blob'a çevirmemiz gerekiyor
-                const res = await fetch(processed.uri);
-                const blob = await res.blob();
-                formData.append('image', blob, 'plant_photo.jpg');
-            } else {
-                // Mobil cihazlarda klasik yöntem
-                formData.append('image', {
-                    uri: processed.uri,
-                    type: 'image/jpeg',
-                    name: 'plant_photo.jpg'
-                });
-            }
-
-            const response = await fetch(`${API_BASE}/api/diagnose`, {
-                method: 'POST',
-                body: formData
-            });
-
-            const result = await response.json();
-
-            if (result.basarili) {
-                navigation.navigate('DiagnosisResult', {
-                    result: result,
-                    photoUri: uri
-                });
-            } else {
-                // Özel hata mesajları
-                if (result.dusuk_confidence) {
-                    Alert.alert(
-                        "Emin Değilim",
-                        "Bitki türü yeterince güvenilir tespit edilemedi. Lütfen yaprağı daha yakından ve net bir şekilde çekin.",
-                        [{ text: "Tekrar Dene" }]
-                    );
-                } else {
-                    Alert.alert("Hata", result.hata || "Analiz yapılamadı.");
-                }
-            }
-        } catch (error) {
-            console.error("API Hatası:", error);
-            Alert.alert(
-                "Bağlantı Hatası",
-                "Sunucuya bağlanılamadı. Lütfen backend sunucusunun çalıştığından emin olun."
-            );
-        } finally {
-            setIsAnalyzing(false);
-            setAnalyzeStep('');
-        }
-    }
-
     return (
         <View style={styles.container}>
-            {/* Kamera 100% Arka Plan */}
-            <CameraView
-                style={StyleSheet.absoluteFillObject}
-                facing={facing}
-                flash={flash}
-                ref={cameraRef}
-            />
+            {/* Memoize edilmiş Kamera Katmanı */}
+            {memoizedCamera}
 
             <View style={[styles.cameraSafeArea, { paddingTop: insets.top > 0 ? insets.top : (Platform.OS === 'android' ? StatusBar.currentHeight : 0) }]}>
                 {/* Üst İşlem Kontrolleri */}

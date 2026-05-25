@@ -1,0 +1,118 @@
+[2026-05-25T16:11:26.783Z] [INFO] 
+🌱 VerdantAI Backend başlatılıyor...
+
+[2026-05-25T16:11:26.784Z] [INFO] 🔄 Yerel PostgreSQL bağlantısı ve veritabanı yapısı doğrulanıyor...
+[2026-05-25T16:11:26.987Z] [SUCCESS] 📡 PostgreSQL servisine başarıyla bağlanıldı (Deneme 1/5).
+[2026-05-25T16:11:26.990Z] [INFO] ✅ 'plant_health_db' veritabanı zaten mevcut.
+[2026-05-25T16:11:27.003Z] [INFO] 🔄 Tablo yapısı doğrulanıyor...
+[2026-05-25T16:11:27.040Z] [INFO] 💾 SQL Sorgusu yürütüldü: CREATE TABLE IF NOT EXISTS diagnoses ( id SERIAL PRIMARY KEY, yaprak_guven NUMERIC, bitki_adi VARCHA | Süre: 36ms | Satır: null
+[2026-05-25T16:11:27.040Z] [SUCCESS] ✅ Veritabanı tablosu hazır! (diagnoses)
+[2026-05-25T16:11:27.041Z] [INFO] ✅ Bitki Sınıflandırma (plant_mobilenetv3large_best.h5) (23.90 MB)
+[2026-05-25T16:11:27.042Z] [INFO] ✅ Pipeline Script (predict_pipeline.py) (0.03 MB)
+[2026-05-25T16:11:27.041Z] [INFO] ✅ YOLO Model (yolo_leaf_best.pt) (21.51 MB)
+[2026-05-25T16:11:27.042Z] [INFO] ✅ Sınıf İsimleri (class_names.txt) (0.00 MB)
+[2026-05-25T16:11:27.042Z] [SUCCESS] Hastalık Modelleri: 6 model bulundu
+[2026-05-25T16:11:27.043Z] [INFO]    🔬 Kiraz hastalık modeli (11.81 MB)
+[2026-05-25T16:11:27.043Z] [INFO]    🔬 Elma hastalık modeli (23.85 MB)
+[2026-05-25T16:11:27.043Z] [INFO]    🔬 Mısır hastalık modeli (23.85 MB)
+[2026-05-25T16:11:27.043Z] [INFO]    🔬 Üzüm hastalık modeli (23.85 MB)
+[2026-05-25T16:11:27.044Z] [INFO]    🔬 Patates hastalık modeli (23.84 MB)
+[2026-05-25T16:11:27.044Z] [INFO]    🔬 Domates hastalık modeli (23.87 MB)
+[2026-05-25T16:11:27.044Z] [SUCCESS] 6 bitki türü başarıyla yüklendi: [apple, cherry, corn, grape, potato, tomato]
+[2026-05-25T16:11:27.044Z] [INFO] 🚀 AI Inference Daemon başlatılıyor...
+[2026-05-25T16:11:31.951Z] [PYTHON] WARNING:tensorflow:From C:\v\venv\Lib\site-packages\tf_keras\src\losses.py:2976: The name tf.losses.sparse_softmax_cross_entropy is deprecated. Please use tf.compat.v1.losses.sparse_softmax_cross_entropy instead.
+[2026-05-25T16:11:32.322Z] [PYTHON] [Daemon] YOLO modeli y�kleniyor...
+[2026-05-25T16:11:32.353Z] [PYTHON] [Daemon] YOLO y�klendi (0.03s)
+[Daemon] Bitki s�n�fland�rma modeli y�kleniyor...
+[2026-05-25T16:11:32.450Z] [PYTHON] WARNING:tensorflow:From C:\v\venv\Lib\site-packages\tf_keras\src\backend.py:1400: The name tf.executing_eagerly_outside_functions is deprecated. Please use tf.compat.v1.executing_eagerly_outside_functions instead.
+[2026-05-25T16:11:32.466Z] [PYTHON] WARNING:tensorflow:TensorFlow GPU support is not available on native Windows for TensorFlow >= 2.11. Even if CUDA/cuDNN are installed, GPU will not be used. Please use WSL2 or the TensorFlow-DirectML plugin.
+WARNING:tensorflow:Mixed precision compatibility check (mixed_float16): WARNING
+The dtype policy mixed_float16 may run slowly because this machine does not have a GPU. Only Nvidia GPUs with compute capability of at least 7.0 run quickly with mixed_float16.
+If you will use compatible GPU(s) not attached to this host, e.g. by running a multi-worker model, you can ignore this warning. This message will only be logged once
+[2026-05-25T16:11:32.633Z] [PYTHON] WARNING:tensorflow:From C:\v\venv\Lib\site-packages\tf_keras\src\layers\normalization\batch_normalization.py:979: The name tf.nn.fused_batch_norm is deprecated. Please use tf.compat.v1.nn.fused_batch_norm instead.
+[2026-05-25T16:11:33.665Z] [PYTHON] [Daemon] Bitki modeli y�klendi (1.31s)
+[2026-05-25T16:11:33.666Z] [PYTHON] [Daemon] 6 bitki s�n�f� okundu
+[Daemon] apple hastal�k modeli y�kleniyor...
+[2026-05-25T16:11:34.660Z] [PYTHON] [Daemon] apple hastal�k modeli y�klendi (0.99s)
+[2026-05-25T16:11:34.660Z] [PYTHON] [Daemon] cherry hastal�k modeli y�kleniyor...
+[2026-05-25T16:11:35.841Z] [PYTHON] [Daemon] cherry hastal�k modeli y�klendi (1.18s)
+[Daemon] corn hastal�k modeli y�kleniyor...
+[2026-05-25T16:11:36.874Z] [PYTHON] [Daemon] corn hastal�k modeli y�klendi (1.03s)
+[2026-05-25T16:11:36.875Z] [PYTHON] [Daemon] grape hastal�k modeli y�kleniyor...
+[2026-05-25T16:11:37.873Z] [PYTHON] [Daemon] grape hastal�k modeli y�klendi (1.00s)
+[Daemon] potato hastal�k modeli y�kleniyor...
+[2026-05-25T16:11:38.858Z] [PYTHON] [Daemon] potato hastal�k modeli y�klendi (0.98s)
+[Daemon] tomato hastal�k modeli y�kleniyor...
+[2026-05-25T16:11:39.849Z] [PYTHON] [Daemon] tomato hastal�k modeli y�klendi (0.99s)
+[Daemon] Warm-up inference yap�l�yor...
+[2026-05-25T16:11:40.407Z] [PYTHON] [Daemon] Warm-up tamamland� (0.56s)
+[2026-05-25T16:11:40.410Z] [PYTHON] ============================================================
+  \U0001f33f Bitki Analiz Daemon Sunucusu HAZIR
+  \U0001f4e1 Adres: http://127.0.0.1:5005
+[2026-05-25T16:11:40.411Z] [PYTHON] \U0001f52c Endpoint: POST /predict (raw image bytes)
+  \U0001f49a Sa�l�k: GET /health
+  \u274c Durdurmak i�in Ctrl+C
+============================================================
+[2026-05-25T16:11:41.205Z] [SUCCESS] 🌿 3 Katmanlı AI Pipeline (Daemon Modu) başarıyla çalışıyor!
+[2026-05-25T16:11:41.205Z] [INFO]    🔗 Daemon bağlantısı: http://127.0.0.1:5005
+
+[2026-05-25T16:11:41.207Z] [SUCCESS] 🚀 Sunucu http://localhost:3000 adresinde başarıyla çalışıyor
+[2026-05-25T16:11:41.208Z] [INFO]    POST /api/diagnose  → Fotoğraf yükle ve teşhis al
+[2026-05-25T16:11:41.208Z] [INFO]    GET  /api/history   → Tüm geçmiş teşhisleri getir
+[2026-05-25T16:11:41.208Z] [INFO]    DELETE /api/history/:id → Belirli teşhis kaydını sil
+[2026-05-25T16:11:41.208Z] [INFO]    GET  /api/labels    → Desteklenen bitki/hastalık listesi
+[2026-05-25T16:11:41.207Z] [INFO] 📡 API Endpoint'leri:
+[2026-05-25T16:11:41.208Z] [INFO]    GET  /api/health    → Sunucu ve servis sağlık durumunu kontrol et
+
+[2026-05-25T16:12:22.607Z] [INFO] 📸 Fotoğraf alındı: plant_photo.jpg (249.7 KB)
+[2026-05-25T16:12:22.608Z] [INFO] 🔄 3 Katmanlı AI Pipeline başlatılıyor...
+[2026-05-25T16:12:23.947Z] [PYTHON] [Katman3 Daemon] potato raw_predictions: [0.9999872446060181, 1.2677728591370396e-05, 1.0366658642624316e-07]
+[2026-05-25T16:12:23.949Z] [PYTHON] [Daemon] /predict tamamland� � 1.338s
+[2026-05-25T16:12:23.950Z] [INFO] ⚡ Daemon yanıt süresi: 1342ms
+[2026-05-25T16:12:23.952Z] [SUCCESS]   📍 Katman 1: Yaprak bulundu (güven: %89.9)
+[2026-05-25T16:12:23.952Z] [SUCCESS]   🔬 Katman 3: 🔴 Erken Yanıklık (güven: %100.0)
+[2026-05-25T16:12:23.953Z] [SUCCESS] ✅ Pipeline başarıyla tamamlandı!
+[2026-05-25T16:12:23.952Z] [SUCCESS]   🌿 Katman 2: Patates (güven: %100.0)
+[2026-05-25T16:12:23.956Z] [INFO] 💾 YOLO Yaprak Kesimi (In-Memory Base64) uploads klasörüne kaydedildi: img_1779725543953_potato.jpg
+[2026-05-25T16:12:23.997Z] [SUCCESS] 📝 Teşhis veritabanına başarıyla kaydedildi. Kayıt ID: 11
+[2026-05-25T16:12:23.996Z] [INFO] 💾 SQL Sorgusu yürütüldü: INSERT INTO diagnoses ( yaprak_guven, bitki_adi, bitki_adi_tr, bitki_guven, hastalik_durum, hastalik | Süre: 40ms | Satır: 1
+[2026-05-25T16:12:29.831Z] [INFO] 💾 SQL Sorgusu yürütüldü: SELECT * FROM diagnoses ORDER BY tarih DESC | Süre: 2ms | Satır: 11
+[2026-05-25T16:12:44.987Z] [INFO] 💾 SQL Sorgusu yürütüldü: SELECT resim_yolu FROM diagnoses WHERE id = $1 | Süre: 7ms | Satır: 1
+[2026-05-25T16:12:44.991Z] [INFO] 💾 SQL Sorgusu yürütüldü: DELETE FROM diagnoses WHERE id = $1 | Süre: 4ms | Satır: 1
+[2026-05-25T16:12:44.992Z] [SUCCESS] ❌ Teşhis kaydı veritabanından silindi. ID: 10
+[2026-05-25T16:12:44.994Z] [SUCCESS] 🗑️ Teşhis resmi diskten silindi: img_1779724997314_potato.jpg
+[2026-05-25T16:12:48.461Z] [INFO] 💾 SQL Sorgusu yürütüldü: SELECT resim_yolu FROM diagnoses WHERE id = $1 | Süre: 1ms | Satır: 1
+[2026-05-25T16:12:48.465Z] [INFO] 💾 SQL Sorgusu yürütüldü: DELETE FROM diagnoses WHERE id = $1 | Süre: 4ms | Satır: 1
+[2026-05-25T16:12:48.466Z] [SUCCESS] ❌ Teşhis kaydı veritabanından silindi. ID: 9
+[2026-05-25T16:12:48.468Z] [SUCCESS] 🗑️ Teşhis resmi diskten silindi: img_1779724976863_tomato.jpg
+[2026-05-25T16:12:52.148Z] [INFO] 💾 SQL Sorgusu yürütüldü: SELECT resim_yolu FROM diagnoses WHERE id = $1 | Süre: 0ms | Satır: 1
+[2026-05-25T16:12:52.149Z] [INFO] 💾 SQL Sorgusu yürütüldü: DELETE FROM diagnoses WHERE id = $1 | Süre: 1ms | Satır: 1
+[2026-05-25T16:12:52.149Z] [SUCCESS] ❌ Teşhis kaydı veritabanından silindi. ID: 8
+[2026-05-25T16:12:52.151Z] [SUCCESS] 🗑️ Teşhis resmi diskten silindi: img_1779723932695_tomato.jpg
+[2026-05-25T16:13:05.846Z] [INFO] 💾 SQL Sorgusu yürütüldü: SELECT resim_yolu FROM diagnoses WHERE id = $1 | Süre: 2ms | Satır: 1
+[2026-05-25T16:13:05.850Z] [INFO] 💾 SQL Sorgusu yürütüldü: DELETE FROM diagnoses WHERE id = $1 | Süre: 4ms | Satır: 1
+[2026-05-25T16:13:05.851Z] [SUCCESS] ❌ Teşhis kaydı veritabanından silindi. ID: 7
+[2026-05-25T16:13:05.853Z] [SUCCESS] 🗑️ Teşhis resmi diskten silindi: img_1779723903314_tomato.jpg
+[2026-05-25T16:13:15.965Z] [INFO] 💾 SQL Sorgusu yürütüldü: SELECT resim_yolu FROM diagnoses WHERE id = $1 | Süre: 1ms | Satır: 1
+[2026-05-25T16:13:15.970Z] [INFO] 💾 SQL Sorgusu yürütüldü: DELETE FROM diagnoses WHERE id = $1 | Süre: 4ms | Satır: 1
+[2026-05-25T16:13:15.970Z] [SUCCESS] ❌ Teşhis kaydı veritabanından silindi. ID: 6
+[2026-05-25T16:13:15.973Z] [SUCCESS] 🗑️ Teşhis resmi diskten silindi: img_1779723873260_tomato.jpg
+[2026-05-25T16:13:21.943Z] [INFO] 💾 SQL Sorgusu yürütüldü: SELECT resim_yolu FROM diagnoses WHERE id = $1 | Süre: 1ms | Satır: 1
+[2026-05-25T16:13:21.944Z] [INFO] 💾 SQL Sorgusu yürütüldü: DELETE FROM diagnoses WHERE id = $1 | Süre: 1ms | Satır: 1
+[2026-05-25T16:13:21.945Z] [SUCCESS] ❌ Teşhis kaydı veritabanından silindi. ID: 5
+[2026-05-25T16:13:21.946Z] [SUCCESS] 🗑️ Teşhis resmi diskten silindi: img_1779650294250_cherry.jpg
+[2026-05-25T16:13:26.602Z] [INFO] 💾 SQL Sorgusu yürütüldü: SELECT resim_yolu FROM diagnoses WHERE id = $1 | Süre: 1ms | Satır: 1
+[2026-05-25T16:13:26.606Z] [INFO] 💾 SQL Sorgusu yürütüldü: DELETE FROM diagnoses WHERE id = $1 | Süre: 3ms | Satır: 1
+[2026-05-25T16:13:26.606Z] [SUCCESS] ❌ Teşhis kaydı veritabanından silindi. ID: 4
+[2026-05-25T16:13:26.608Z] [SUCCESS] 🗑️ Teşhis resmi diskten silindi: img_1779650253128_tomato.jpg
+[2026-05-25T16:13:38.058Z] [INFO] 💾 SQL Sorgusu yürütüldü: SELECT * FROM diagnoses ORDER BY tarih DESC | Süre: 1ms | Satır: 4
+[2026-05-25T16:14:29.308Z] [INFO] 💾 SQL Sorgusu yürütüldü: SELECT * FROM diagnoses ORDER BY tarih DESC | Süre: 30ms | Satır: 4
+[2026-05-25T16:14:31.997Z] [INFO] 💾 SQL Sorgusu yürütüldü: SELECT * FROM diagnoses ORDER BY tarih DESC | Süre: 2ms | Satır: 4
+[2026-05-25T16:14:40.727Z] [INFO] 💾 SQL Sorgusu yürütüldü: SELECT * FROM diagnoses ORDER BY tarih DESC | Süre: 1ms | Satır: 4
+[2026-05-25T16:15:21.908Z] [INFO] 💾 SQL Sorgusu yürütüldü: SELECT * FROM diagnoses ORDER BY tarih DESC | Süre: 40ms | Satır: 4
+[2026-05-25T16:18:30.035Z] [INFO] 💾 SQL Sorgusu yürütüldü: SELECT * FROM diagnoses ORDER BY tarih DESC | Süre: 39ms | Satır: 4
+[2026-05-25T16:18:47.408Z] [INFO] 💾 SQL Sorgusu yürütüldü: SELECT * FROM diagnoses ORDER BY tarih DESC | Süre: 1ms | Satır: 4
+[2026-05-25T16:19:07.594Z] [INFO] 💾 SQL Sorgusu yürütüldü: SELECT * FROM diagnoses ORDER BY tarih DESC | Süre: 0ms | Satır: 4
+[2026-05-25T16:19:12.082Z] [INFO] 💾 SQL Sorgusu yürütüldü: SELECT * FROM diagnoses ORDER BY tarih DESC | Süre: 1ms | Satır: 4
+[2026-05-25T16:19:19.762Z] [INFO] 💾 SQL Sorgusu yürütüldü: SELECT * FROM diagnoses ORDER BY tarih DESC | Süre: 1ms | Satır: 4
+[2026-05-25T16:19:23.405Z] [INFO] 💾 SQL Sorgusu yürütüldü: SELECT * FROM diagnoses ORDER BY tarih DESC | Süre: 1ms | Satır: 4

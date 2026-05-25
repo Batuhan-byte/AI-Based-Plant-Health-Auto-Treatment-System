@@ -1,57 +1,75 @@
 const { Client } = require('pg');
-const { pool } = require('./db');
+const db = require('./db');
+const logger = require('../utils/logger');
 
 /**
  * Sunucu her başladığında çalışarak yerel PostgreSQL üzerinde veritabanı 
  * ve tabloların varlığını kontrol eder, yoksa otomatik oluşturur.
+ * Veritabanı servisinin geç açılabilme ihtimaline karşı 5 kez yeniden deneme (retry) mekanizması içerir.
  */
 async function initializeDatabase() {
-    console.log('🔄 Yerel PostgreSQL kontrol ediliyor...');
-
     const dbName = process.env.DB_DATABASE || 'plant_health_db';
+    const maxRetries = 5;
+    const retryDelayMs = 3000;
+    
+    let clientConnected = false;
+    let attempts = 0;
 
-    // 1. Aşama: Varsayılan 'postgres' veritabanına bağlanıp, asıl DB'mizin varlığını kontrol et
-    const defaultClient = new Client({
-        user: process.env.DB_USER || 'postgres',
-        password: process.env.DB_PASSWORD || 'postgres',
-        host: process.env.DB_HOST || 'localhost',
-        port: parseInt(process.env.DB_PORT || '5432'),
-        database: 'postgres', // Varsayılan sistem veritabanı
-    });
+    logger.info('🔄 Yerel PostgreSQL bağlantısı ve veritabanı yapısı doğrulanıyor...');
 
-    try {
-        await defaultClient.connect();
-        
-        // Veritabanı mevcut mu sorgula
-        const checkDbRes = await defaultClient.query(
-            `SELECT 1 FROM pg_database WHERE datname = $1`, 
-            [dbName]
-        );
-        
-        if (checkDbRes.rowCount === 0) {
-            console.log(`📡 '${dbName}' veritabanı bulunamadı. Otomatik oluşturuluyor...`);
-            // CREATE DATABASE sorgusunda parametrik bind ($1) desteklenmez. 
-            // Kendi konfigürasyonumuz olduğu için güvenlidir.
-            await defaultClient.query(`CREATE DATABASE ${dbName}`);
-            console.log(`✅ '${dbName}' veritabanı oluşturuldu.`);
-        } else {
-            console.log(`✅ '${dbName}' veritabanı zaten mevcut.`);
-        }
-    } catch (error) {
-        console.error('❌ Veritabanı kontrolü başarısız oldu:', error.message);
-        console.log('💡 Lütfen PostgreSQL servisinin çalıştığından ve şifrenin .env dosyasında doğru olduğundan emin olun.\n');
-        return false;
-    } finally {
+    // 1. Aşama: Veritabanı bağlantı retry döngüsü
+    while (attempts < maxRetries && !clientConnected) {
+        attempts++;
+        const defaultClient = new Client({
+            user: process.env.DB_USER || 'postgres',
+            password: process.env.DB_PASSWORD || 'postgres',
+            host: process.env.DB_HOST || 'localhost',
+            port: parseInt(process.env.DB_PORT || '5432'),
+            database: 'postgres', // Varsayılan sistem veritabanı
+            connectionTimeoutMillis: 3000,
+        });
+
         try {
+            await defaultClient.connect();
+            clientConnected = true;
+            logger.success(`📡 PostgreSQL servisine başarıyla bağlanıldı (Deneme ${attempts}/${maxRetries}).`);
+            
+            // Veritabanı mevcut mu sorgula
+            const checkDbRes = await defaultClient.query(
+                `SELECT 1 FROM pg_database WHERE datname = $1`, 
+                [dbName]
+            );
+            
+            if (checkDbRes.rowCount === 0) {
+                logger.warn(`📡 '${dbName}' veritabanı bulunamadı. Otomatik oluşturuluyor...`);
+                // CREATE DATABASE sorgusunda parametrik bind ($1) desteklenmez. 
+                await defaultClient.query(`CREATE DATABASE ${dbName}`);
+                logger.success(`✅ '${dbName}' veritabanı oluşturuldu.`);
+            } else {
+                logger.info(`✅ '${dbName}' veritabanı zaten mevcut.`);
+            }
+            
             await defaultClient.end();
-        } catch (e) {
-            // Sessizce geç
+        } catch (error) {
+            logger.warn(`⚠️ PostgreSQL bağlantı denemesi ${attempts}/${maxRetries} başarısız oldu: ${error.message}`);
+            
+            try { await defaultClient.end(); } catch (e) {}
+            
+            if (attempts < maxRetries) {
+                logger.info(`⏳ ${retryDelayMs / 1000} saniye sonra tekrar denenecek...`);
+                await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+            } else {
+                logger.error('❌ PostgreSQL servisine bağlanılamadı. Maksimum deneme sınırına ulaşıldı.');
+                logger.warn('💡 Sunucu çevrimdışı modda (offline-mode) başlatılıyor. AI analizleri çalışacak ancak geçmiş kaydedilmeyecek.');
+                db.isDbConnected = false;
+                return false;
+            }
         }
     }
 
     // 2. Aşama: Asıl veritabanına bağlanarak 'diagnoses' tablosunu oluştur
     try {
-        console.log('🔄 Tablo yapısı doğrulanıyor...');
+        logger.info('🔄 Tablo yapısı doğrulanıyor...');
         
         const createTableQuery = `
             CREATE TABLE IF NOT EXISTS diagnoses (
@@ -70,11 +88,13 @@ async function initializeDatabase() {
             );
         `;
 
-        await pool.query(createTableQuery);
-        console.log('✅ Veritabanı tablosu hazır! (diagnoses)');
+        await db.query(createTableQuery);
+        logger.success('✅ Veritabanı tablosu hazır! (diagnoses)');
+        db.isDbConnected = true;
         return true;
     } catch (error) {
-        console.error('❌ Tablo oluşturma hatası:', error.message);
+        logger.error('❌ Tablo oluşturma hatası:', error);
+        db.isDbConnected = false;
         return false;
     }
 }

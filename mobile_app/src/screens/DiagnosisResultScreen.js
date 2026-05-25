@@ -14,12 +14,48 @@ export default function DiagnosisResultScreen({ route, navigation }) {
     const insets = useSafeAreaInsets();
     const styles = useMemo(() => getDynamicStyles(colors, isDark), [colors, isDark]);
 
-    // Route'dan gelen veriler (yeni 3 katmanlı pipeline formatı)
+    // Route'dan gelen veriler (Kararlı DTO formatı - Adapter Deseniyle Eşleştirme)
     const { result, photoUri } = route.params || {};
-    const tahmin = result?.tahmin || {};
-    const k1 = result?.katman1_yaprak || {};
-    const k2 = result?.katman2_bitki || {};
-    const k3 = result?.katman3_hastalik || {};
+    
+    const k1 = {
+        tespit_edildi: result?.leafDetection?.detected || false,
+        confidence: result?.leafDetection?.confidence || 0,
+        bbox: result?.leafDetection?.bbox || null,
+        toplam_tespit: result?.leafDetection?.totalCount || 0
+    };
+    
+    const k2 = {
+        tur: result?.plantInfo?.name || 'unknown',
+        tur_tr: result?.plantInfo?.displayName || 'Bilinmeyen Bitki',
+        confidence: result?.plantInfo?.confidence || 0,
+        top3: (result?.plantInfo?.top3 || []).map(t => ({
+            tur: t.name,
+            tur_tr: t.displayName,
+            confidence: t.confidence
+        }))
+    };
+    
+    const k3 = {
+        durum: result?.healthStatus?.status || 'unknown',
+        saglikli: result?.healthStatus?.isHealthy ?? true,
+        hastalik: result?.healthStatus?.diseaseName || null,
+        hastalik_tr: result?.healthStatus?.diseaseDisplayName || 'Sağlıklı',
+        confidence: result?.healthStatus?.confidence || 0,
+        dusuk_confidence: result?.healthStatus?.lowConfidence || false,
+        mesaj: result?.healthStatus?.message || null,
+        top3: (result?.healthStatus?.top3 || []).map(t => ({
+            hastalik: t.diseaseName,
+            hastalik_tr: t.diseaseDisplayName,
+            confidence: t.confidence
+        }))
+    };
+    
+    const tahmin = {
+        bitki: k2.tur_tr,
+        hastalik: k3.hastalik_tr,
+        saglikli: k3.saglikli,
+        hastalik_durumu: k3.durum
+    };
 
 
     return (
