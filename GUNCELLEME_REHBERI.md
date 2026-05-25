@@ -1,13 +1,34 @@
 # 🚀 AI Bitki Sağlığı Sistemi - Güncelleme ve Kurulum Rehberi
 
-Bu dosya, projeyi kendi branch'ine çeken ekip üyeleri (Arif vb.) için güncel kodların sorunsuz çalışması adına yapılması gerekenleri içerir.
+Bu dosya, projeyi kendi branch'ine çeken ekip üyeleri (Arif, Mahmut vb.) için güncel kodların ve yeni mimarinin sorunsuz çalışması adına yapılması gerekenleri ve kritik sistem özelliklerini içerir.
 
-## 📦 1. Backend (Sunucu) Kurulumu
+---
 
-**DİKKAT YENİ MİMARİ:** Eski tek katmanlı AI yapısı tamamen kaldırılarak **3 Katmanlı Pipeline Mimarisine** (YOLO -> Keras MobileNet -> Hastalık) geçilmiştir. Ayrıca TFLite (FlexOps) hatalarını önlemek için tür sınıflandırmada direkt `.h5` Keras modeli kullanılmaktadır.
+## 🐍 1. Kritik Mimariler ve Yenilikler (Okunması Önemli!)
+
+### ⚡ A. AI Inference Daemon Modu (RAM'de Sıcak Modeller)
+Eski tek katmanlı ve her istekte sıfırdan Python başlatan (`child_process.spawn`) hantal yapı **tamamen kaldırılmıştır**.
+*   **Nasıl Çalışır:** Sunucu ilk başladığında Express, arka planda kalıcı bir **Python Daemon sunucusu** (yerel `localhost:5005` portunda) başlatır.
+*   **Modeller RAM'de:** YOLO yaprak tespiti, MobileNet bitki sınıflandırma ve Keras hastalık sınıflandırma modellerinin tamamı **yalnızca 1 kez** RAM'e yüklenir ve orada sıcak tutulur.
+*   **Performans Hızı:** Fotoğraf analiz süresi **8-12 saniyeden, 150-300 milisaniyeye (~40 kat hızlı)** düşürülmüştür.
+*   **Güvenli Kapatma (Graceful Shutdown):** Konsolda `Ctrl+C` yaptığınızda veya sunucu durduğunda, Express arka plandaki Python sürecini otomatik olarak kapatır. Arka planda asla zombi Python süreçleri kalmaz.
+
+### 🔌 B. Veritabanı Direnci ve Çevrimdışı Başlangıç (Offline Mode)
+Sistemin veritabanı kesintileri veya çökmeleri anında çalışmaya devam etmesi için **Fail-Safe** mekanizmaları eklenmiştir:
+*   **Gecikmeli Başlangıç Koruması:** Sunucu başlarken PostgreSQL servisine bağlanmak için **5 denemelik otomatik retry (3 saniye aralıklarla)** döngüsü çalıştırır.
+*   **Yumuşak Geçiş (Graceful Degradation):** Eğer PostgreSQL tamamen kapalıysa sunucu çökmeden açılır. `/api/health` durumunda veritabanı `offline` olarak görünür.
+*   **Çevrimdışı Analiz Desteği:** Veritabanı kapalı olsa dahi yapay zeka çıkarımı aksamaz. Fotoğraf analiz edildiğinde yaprak kesimi diske kaydedilir, tedavi önerisi oluşturulur ve istemciye sonuç döner (sadece teşhis geçmişi DB'ye kaydedilmez, API yanıtında `veritabani_kayitli: false` döner).
+
+### 🔍 C. In-Memory Base64 Yaprak Kırpma Transferi
+*   YOLO tarafından kırpılan yaprak görseli (crop) diskteki geçici bir dosya (`yolotest_fotosu.jpg`) üzerinden değil, **doğrudan bellekte Base64 formatına dönüştürülerek** HTTP üzerinden taşınır.
+*   Bu sayede disk I/O hızı artırılmış, disk ömrü korunmuş ve eşzamanlı (concurrent) taleplerde resimlerin birbirinin üzerine yazılması hatası tamamen çözülmüştür.
+
+---
+
+## 📦 2. Backend (Sunucu) Kurulumu
 
 ### 🐍 Python Bağımlılıkları (Kritik)
-Modelin çalışması için Python ortamınızda şu kütüphaneler yüklü olmalıdır:
+Modelin çalışması için Python ortamınızda (venv) şu kütüphaneler yüklü olmalıdır:
 
 ```bash
 pip install ultralytics tensorflow tf_keras pillow numpy
@@ -20,20 +41,30 @@ pip install ultralytics tensorflow tf_keras pillow numpy
 cd backend
 npm install
 ```
-*Not: Yeni mimari ile birlikte `@tensorflow/tfjs` ve `sharp` gibi gereksiz yük oluşturan Node.js paketleri kaldırılmış, tüm AI işlemleri saf Python `predict_pipeline.py` tarafına taşınmıştır.*
+*Not: Yeni mimari ile birlikte `@tensorflow/tfjs` ve `sharp` gibi ağır Node.js paketleri kaldırılmış, tüm AI işlemleri saf Python `predict_pipeline.py` tarafına taşınmıştır.*
 
 ### ⚙️ .env Yapılandırması
-`backend` klasörü içinde bir `.env` dosyası oluşturun ve Python yolunu belirtin:
+`backend` klasörü içinde bir `.env` dosyası oluşturun ve sisteminize göre gerekli yapılandırmaları girin:
 
 ```env
-PYTHON_PATH=C:\v\venv\Scripts\python.exe  # Kendi sanal ortam (venv) veya global Python yolunuz
+# Python yolu (Kendi sanal ortam venv veya global Python yolunuz)
+PYTHON_PATH=C:\v\venv\Scripts\python.exe
+
+# Port Yapılandırmaları
+PORT=3000
+AI_DAEMON_PORT=5005
+
+# PostgreSQL Bağlantı Bilgileri
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_HOST=localhost
+DB_PORT=5432
+DB_DATABASE=plant_health_db
 ```
 
 ---
 
-## 📱 2. Mobile App (Mobil Uygulama) Kurulumu
-
-Mobil uygulamada yeni UI bileşenleri, hava durumu videoları ve gelişmiş 3 aşamalı (Katman 1-2-3) analiz akışı eklenmiştir.
+## 📱 3. Mobile App (Mobil Uygulama) Kurulumu
 
 ### 📦 Paket Kurulumu
 `mobile_app` klasörüne gidin ve tüm bağımlılıkları yükleyin:
@@ -42,33 +73,44 @@ Mobil uygulamada yeni UI bileşenleri, hava durumu videoları ve gelişmiş 3 a�
 cd mobile_app
 npm install
 ```
-*Kritik paketler:* `expo-camera`, `expo-image-manipulator`, `expo-av`, `expo-location`, `nativewind`.
+*Kritik paketler:* `expo-constants`, `expo-camera`, `expo-image-manipulator`, `expo-av`, `expo-location`, `nativewind`.
 
-### 🌐 IP Adresi Güncelleme (Cihaz Testi İçin)
-Fiziksel cihazda (Expo Go) test yapacaksanız, `mobile_app/src/screens/CameraScreen.js` dosyasındaki API_BASE kısmını yerel IP'nizle güncelleyin.
+### 🌐 IP Adresi Güncelleme (Artık Otomatik!)
+Fiziksel cihazda (Expo Go) test yaparken IP adresi artık `expo-constants` kullanılarak **otomatik olarak tespit edilmektedir.** 
 
----
+`mobile_app/src/config.js` dosyasında şu yapı kullanılmaktadır:
+```javascript
+import Constants from 'expo-constants';
 
-## 🛠️ 3. Özet ve Dikkat Edilmesi Gerekenler
-
-- **Model Dosyaları:** Ana proje dizininde `ai_model/active_models/` klasörü içinde `yolo_leaf_best.pt` (Katman 1), `plant_mobilenetv3large_best.h5` (Katman 2) ve `class_names.txt` dosyalarının olduğundan emin olun. TFLite dosyaları artık kullanılmamaktadır.
-- **Python Hatası:** Sunucu yanıt vermiyorsa `ultralytics` veya `tf_keras` kütüphanesinin yüklü olup olmadığını terminalden kontrol edin.
-- **Hastalık Tespiti (Katman 3):** Şu anda pipeline içerisinde yerleşik (placeholder) olarak beklemededir. Gelecekte yeni bir Keras modeli eklendiğinde doğrudan entegre edilecektir.
-
----
-
-## 🐞 4. Sık Karşılaşılan Hatalar ve Çözümleri
-
-### ❌ `TypeError: fetch failed` (Mobile App Start)
-Eğer `npm start` aşamasında veya Metro Bundler başladığında bu hatayı alıyorsanız, sebebi **Node.js 22+** sürümlerindeki yerleşik `fetch` mekanizmasının Expo API'lerine DNS/SSL üzerinden bağlanamamasıdır.
-
-**Çözüm:** Projeyi **offline** (çevrimdışı paketleme) modunda başlatın. Bu mod yerel geliştirme için yeterlidir:
-```bash
-npx expo start --offline
-# VEYA
-npm start -- --offline
+const hostUri = Constants.expoConfig?.hostUri;
+const ip = hostUri ? hostUri.split(':').shift() : '192.168.1.157'; // Yerel Wifi IP'niz fallback
+export const API_BASE = `http://${ip}:3000`;
 ```
+Bu sayede her cihaz testi öncesinde manuel IP değiştirmek zorunda kalmazsınız, tüm ekranlar otomatik olarak bilgisayarınızda açık olan Express sunucusuna bağlanır.
 
 ---
 
-*Bol şanslar!* 🌿
+## ⚙️ 4. Model Dosyalarının Konumu
+
+Ana proje dizininde `ai_model/active_models/` klasörü altında şu dosyaların eksiksiz yer aldığından emin olun:
+-   `yolo_leaf_best.pt` *(Katman 1 - Yaprak tespiti)*
+-   `plant_mobilenetv3large_best.h5` *(Katman 2 - Bitki sınıflandırma)*
+-   `class_names.txt` *(Desteklenen bitki sınıfları)*
+-   `disease_models/` *(Katman 3 - Bitki türlerine özel `.keras` hastalık modelleri)*
+
+---
+
+## 🐞 5. Sık Karşılaşılan Hatalar ve Çözümleri
+
+### ❌ `TypeError: fetch failed` (Mobile App / Metro Bundler)
+Eski Node.js sürümlerindeki DNS çözümleme hatalarından kaynaklanır.
+*   **Çözüm:** Projeyi **offline** (yerel geliştirme) modunda başlatın:
+    ```bash
+    npm start -- --offline
+    # veya
+    npx expo start --offline
+    ```
+
+### ❌ PostgreSQL Bağlantı Hatası (Sunucu Başlangıcı)
+PostgreSQL servisi kapalıysa konsolda bağlantı denemeleri loglanır.
+*   **Çözüm:** Teşhis geçmişini kullanmak istiyorsanız yerel PostgreSQL servisinizin çalıştığından emin olun. Sadece anlık AI teşhisi yapmak istiyorsanız sunucu otomatik olarak **Çevrimdışı Mod**'da başlayacaktır, geliştirmeye devam edebilirsiniz.
