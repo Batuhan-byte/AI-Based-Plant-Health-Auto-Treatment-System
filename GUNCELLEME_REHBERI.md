@@ -44,8 +44,16 @@ npm install
 ```
 *Kritik paketler:* `expo-camera`, `expo-image-manipulator`, `expo-av`, `expo-location`, `nativewind`.
 
-### 🌐 IP Adresi Güncelleme (Cihaz Testi İçin)
-Fiziksel cihazda (Expo Go) test yapacaksanız, `mobile_app/src/screens/CameraScreen.js` dosyasındaki API_BASE kısmını yerel IP'nizle güncelleyin.
+### 🌐 IP Adresi Güncelleme (Artık Otomatik!)
+Fiziksel cihazda (Expo Go) test yaparken IP adresi artık `expo-constants` kullanılarak **otomatik olarak tespit edilmektedir.** 
+
+`mobile_app/src/config.js` dosyasında şu yapı kullanılmaktadır:
+```javascript
+const hostUri = Constants.expoConfig?.hostUri;
+const ip = hostUri ? hostUri.split(':').shift() : '192.168.1.157';
+export const API_BASE = `http://${ip}:3000`;
+```
+Bu sayede her seferinde IP adresi değiştirmenize gerek kalmaz, tüm ekranlar otomatik olarak yerel sunucunuza bağlanır.
 
 ---
 
