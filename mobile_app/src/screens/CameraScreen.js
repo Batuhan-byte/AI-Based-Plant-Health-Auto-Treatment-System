@@ -11,19 +11,6 @@ import { API_BASE } from '../config';
 
 const { width: screenWidth } = Dimensions.get('window');
 
-// Resim boyutlarını in-memory disk yazması yapmadan alan yardımcı fonksiyon
-const getImageSize = (uri) => {
-    return new Promise((resolve) => {
-        Image.getSize(
-            uri,
-            (width, height) => resolve({ width, height }),
-            (error) => {
-                console.warn("Resim boyutları Image.getSize ile alınamadı, varsayılanlar kullanılacak:", error);
-                resolve({ width: 1080, height: 1920 }); // Güvenli fallback
-            }
-        );
-    });
-};
 
 export default function CameraScreen({ navigation }) {
     const { theme } = useTheme();
@@ -95,36 +82,65 @@ export default function CameraScreen({ navigation }) {
                 setAnalyzeStep('Görüntü hazırlanıyor...');
             }
 
-            // [PERFORMANCE FIX]: İlk manipulateAsync call kaldırıldı! Resim boyutu in-memory Image.getSize ile alınıyor.
-            const { width: imgW, height: imgH } = await getImageSize(uri);
-            
-            // Vizörün ekrandaki oranlarına göre kırpma hesapla (merkezleme)
-            const cropW = imgW * ((screenWidth - 100) / screenWidth);
-            const cropH = imgW * ((screenWidth - 60) / screenWidth);
-            const originX = (imgW - cropW) / 2;
-            const originY = (imgH - cropH) / 2;
-            
-            const processed = await ImageManipulator.manipulateAsync(
-                uri,
-                [
-                    {
-                        crop: {
-                            originX: Math.max(0, Math.round(originX)),
-                            originY: Math.max(0, Math.round(originY)),
-                            width: Math.min(imgW, Math.round(cropW)),
-                            height: Math.min(imgH, Math.round(cropH)),
+            // [SAMSUNG FIX v2]: Android (özellikle Samsung) kameralar, vizörde gösterilen alandan
+            // çok daha geniş bir açıyla fotoğraf çeker. Bu nedenle yaprak fotoğrafta küçük kalır
+            // ve YOLO algılayamaz. Çözüm:
+            //   1. Önce resize yapıyoruz — bu adımda expo-image-manipulator EXIF rotation'ı
+            //      otomatik uygular, böylece boyutlar güvenilir hale gelir.
+            //   2. Sadece Android'de, resize edilmiş görüntünün merkezinden %65'lik bir alan
+            //      kırpılır. Bu, vizör çerçevesiyle eşleşen yakınlaştırılmış bir görüntü üretir.
+            //   3. iOS'a dokunulmaz — iOS zaten vizörle aynı kadrajı kaydeder.
+            let processed;
+
+            if (Platform.OS === 'android') {
+                // ADIM 1: Resize — EXIF rotation otomatik uygulanır, boyutlar normalize olur
+                const resized = await ImageManipulator.manipulateAsync(
+                    uri,
+                    [{ resize: { width: 1280 } }],
+                    { format: ImageManipulator.SaveFormat.JPEG, compress: 0.9 }
+                );
+
+                // ADIM 2: Merkezden %50 kırpma (Android geniş açı telafisi — iOS kadrajına eşitleme)
+                const CROP_RATIO = 0.40;
+                const resizedW = resized.width;
+                const resizedH = resized.height;
+                const cropW = Math.round(resizedW * CROP_RATIO);
+                const cropH = Math.round(resizedH * CROP_RATIO);
+                const originX = Math.round((resizedW - cropW) / 2);
+                // Dikey eksende kırpmayı biraz yukarı kaydır (%35 üst / %65 alt)
+                // Samsung'da vizör üst bölgede, alt kısımda UI elemanları kalıyor
+                const originY = Math.round((resizedH - cropH) * 0.35);
+
+                processed = await ImageManipulator.manipulateAsync(
+                    resized.uri,
+                    [
+                        {
+                            crop: {
+                                originX,
+                                originY,
+                                width: cropW,
+                                height: cropH,
+                            }
                         }
-                    }
-                ],
-                { format: ImageManipulator.SaveFormat.JPEG, compress: 0.9 }
-            );
+                    ],
+                    { format: ImageManipulator.SaveFormat.JPEG, compress: 0.85 }
+                );
+            } else {
+                // iOS: Sadece resize — kadraj zaten doğru
+                processed = await ImageManipulator.manipulateAsync(
+                    uri,
+                    [{ resize: { width: 1024 } }],
+                    { format: ImageManipulator.SaveFormat.JPEG, compress: 0.85 }
+                );
+            }
+
 
             if (isMountedRef.current) {
                 setAnalyzeStep('Yaprak aranıyor...');
             }
 
             const formData = new FormData();
-            
+
             if (Platform.OS === 'web') {
                 const res = await fetch(processed.uri, { signal });
                 const blob = await res.blob();

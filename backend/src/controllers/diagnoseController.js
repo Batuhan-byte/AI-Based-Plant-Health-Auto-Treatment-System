@@ -39,6 +39,18 @@ async function diagnose(req, res) {
         }
 
         logger.info(`📸 Fotoğraf alındı: ${req.file.originalname} (${(req.file.size / 1024).toFixed(1)} KB)`);
+        
+        // --- DEBUG: Her gelen orijinal resmi uploads klasörüne geçici olarak kaydet ---
+        const debugFilename = `debug_${Date.now()}.jpg`;
+        const debugSavePath = path.join(__dirname, '..', '..', 'uploads', debugFilename);
+        try {
+            await fs.promises.writeFile(debugSavePath, req.file.buffer);
+            logger.info(`🔍 DEBUG: Gelen ham görsel uploads klasörüne kaydedildi: ${debugFilename}`);
+        } catch (debugErr) {
+            logger.error('🔍 DEBUG: Kaydetme hatası', debugErr);
+        }
+        // ---------------------------------------------------------------------------------
+
         logger.info('🔄 3 Katmanlı AI Pipeline başlatılıyor...');
 
         // AI Pipeline'ı çağır (Python Daemon'a HTTP isteği yapar)
