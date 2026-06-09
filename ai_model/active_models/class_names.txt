@@ -1,6 +1,9 @@
 apple
+bell pepper
 cherry
 corn
 grape
+peach
 potato
+strawberry
 tomato

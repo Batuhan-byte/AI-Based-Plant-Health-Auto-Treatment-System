@@ -5,25 +5,6 @@ const db = require('../config/db');
 const aiService = require('../services/aiService');
 const logger = require('../utils/logger');
 
-// Türkçe Tedavi Önerileri Kütüphanesi
-const TREATMENT_RECOMMENDATIONS = {
-    'Healthy': 'Bitkiniz oldukça sağlıklı görünüyor. Mevcut sulama ve bakım düzenini bozmadan devam edin. Düzenli olarak yaprak altlarını kontrol etmeyi unutmayın.',
-    'Apple Scab': 'Elma Karalekesi teşhisi konuldu. Tedavi için:\n1. Enfekte olmuş yaprakları ve dalları budayarak bahçeden uzaklaştırın.\n2. İlkbaharda tomurcuklar açılmadan önce bakır içerikli fungusitler (mantar ilacı) uygulayın.\n3. Sulamayı sabah saatlerinde ve doğrudan köke yapın, yaprakları ıslatmaktan kaçının.',
-    'Black Rot': 'Siyah Çürüklük teşhisi konuldu. Tedavi için:\n1. Bulaşık yaprak, sürgün ve meyve salkımlarını hemen budayıp yakın.\n2. Kimyasal mücadele için sistemik fungusitler kullanın.\n3. Bitki çevresindeki hava sirkülasyonunu artırmak için budamayı doğru yapın ve nemli ortamı azaltın.',
-    'Cedar Apple Rust': 'Sedir-Elma Pası teşhisi konuldu. Tedavi için:\n1. Yakındaki sedir veya ardıç ağaçlarında oluşan pas urlarını temizleyin.\n2. Yapraklar yeni açılırken koruyucu fungusit uygulaması yapın.\n3. Dirençli bitki çeşitlerini tercih etmeye özen gösterin.',
-    'Powdery Mildew': 'Külleme hastalığı tespit edildi. Tedavi için:\n1. Enfekte kısımları hemen budayarak temizleyin.\n2. Kükürt bazlı ilaçlar veya sistemik fungusitler kullanın.\n3. Bitkileri aşırı sık dikmeyin, aralarındaki hava akışını artırın. Sulamayı yapraktan değil kökten yapın.',
-    'Cercospora Leaf Spot': 'Cercospora Yaprak Lekesi tespit edildi. Tedavi için:\n1. Bitki kalıntılarını temizleyin ve imha edin.\n2. Nem oranını düşürün, yaprak ıslaklık süresini azaltın.\n3. Kimyasal mücadelede bakırlı ilaçlar veya uygun koruyucu fungusitler kullanın.',
-    'Common Rust': 'Pas Hastalığı tespit edildi. Tedavi için:\n1. Pas püstülleri olan yaprakları koparıp imha edin.\n2. Bitkiler arasında yeterli mesafe bırakarak havalandırmayı iyileştirin.\n3. Bakır veya kükürt içerikli fungusitler ile ilaçlama yapın.',
-    'Northern Leaf Blight': 'Kuzey Yaprak Yanıklığı tespit edildi. Tedavi için:\n1. Hastalıklı bitki artıklarını tarladan uzaklaştırın.\n2. Gelecek sezon için ekim nöbeti (münavebe) uygulayın.\n3. Şiddetli durumlarda triazol veya strobilurin grubu fungusitler kullanın.',
-    'Esca (Black Measles)': 'Esca (Siyah Kızamık) tespit edildi. Tedavi için:\n1. Budama aletlerini her kesimden sonra mutlaka dezenfekte edin.\n2. Budama yaralarını aşı macunu ile kapatın.\n3. Şiddetli enfekte olmuş yaşlı asmaları söküp yakın.',
-    'Leaf Blight': 'Yaprak Yanıklığı tespit edildi. Tedavi için:\n1. Enfekte yaprakları budayarak bitkiden uzaklaştırın.\n2. Bakır içerikli mantar ilaçları ile koruyucu ilaçlama yapın.\n3. Yaprakları kuru tutmaya özen gösterin, damlama sulama kullanın.',
-    'Bacterial Spot': 'Bakteriyel Leke hastalığı tespit edildi. Tedavi için:\n1. Bakteriyel bir hastalık olduğu için normal mantar ilaçları etki etmez, bakır bazlı bakterisitler kullanın.\n2. Tarım aletlerini sık sık sterilize edin.\n3. Hastalıklı bitki kalıntılarını tarlada bırakmayın.',
-    'Early Blight': 'Erken Yanıklık tespit edildi. Tedavi için:\n1. Alt yaprakları budayarak toprakla temasını kesin.\n2. Düzenli olarak dengeli gübreleme yaparak bitki direncini artırın.\n3. Bakırlı ilaçlar veya chlorothalonil içerikli koruyucu ilaçlar uygulayın.',
-    'Late Blight': 'Geç Yanıklık (Mildiyö) tespit edildi (ÇOK RİSKLİ!). Tedavi için:\n1. Nemli ve serin havalarda hızla yayılır; sulamayı kesinlikle damlama olarak yapın.\n2. Hastalıklı tüm bitki kısımlarını hemen toplayıp yakın (kompost yapmayın).\n3. Metalaxyl, mancozeb veya bakır içerikli sistemik ilaçlar ile acilen ilaçlama yapın.',
-    'Septoria Leaf Spot': 'Septoria Yaprak Lekesi tespit edildi. Tedavi için:\n1. Topraktan bulaşmayı önlemek için malçlama yapın.\n2. Alt yapraklarda lekeler başladığı anda budama yapın.\n3. Bakırlı mantar ilaçları veya koruyucu fungusitler kullanın.',
-    'Yellow Leaf Curl Virus': 'Sarı Yaprak Kıvırma Virüsü tespit edildi. Tedavi için:\n1. Virüsü yayan Beyaz Sinek (Bemisia tabaci) ile kimyasal veya biyolojik olarak acilen mücadele edin.\n2. Enfekte edilmiş bitkileri derhal söküp plastik torbalara koyarak tarladan uzaklaştırın.\n3. Seralarda sinek tülleri ve yapışkan sarı tuzaklar kullanın.'
-};
-
 /**
  * POST /api/diagnose
  * Fotoğrafı alır, 3 katmanlı AI pipeline'a gönderir, diske resim kaydeder ve DB'ye yazar.
@@ -38,7 +19,8 @@ async function diagnose(req, res) {
             });
         }
 
-        logger.info(`📸 Fotoğraf alındı: ${req.file.originalname} (${(req.file.size / 1024).toFixed(1)} KB)`);
+        const userUuid = req.headers['x-user-uuid'] || 'default_guest_uuid';
+        logger.info(`📸 Fotoğraf alındı: ${req.file.originalname} (${(req.file.size / 1024).toFixed(1)} KB) | Kullanıcı UUID: ${userUuid}`);
         
         // --- DEBUG: Her gelen orijinal resmi uploads klasörüne geçici olarak kaydet ---
         const debugFilename = `debug_${Date.now()}.jpg`;
@@ -83,43 +65,75 @@ async function diagnose(req, res) {
                 logger.info(`💾 Orijinal görüntü diske kaydedildi (YOLO crop bulunamadı): ${filename}`);
             }
 
-            // 2. Tedavi Önerisini belirle
-            if (result.katman3_hastalik.durum === 'tespit_edildi') {
-                if (result.katman3_hastalik.saglikli) {
-                    tedaviOnerisi = TREATMENT_RECOMMENDATIONS['Healthy'];
-                } else {
-                    tedaviOnerisi = TREATMENT_RECOMMENDATIONS[result.katman3_hastalik.hastalik] || 
-                                    TREATMENT_RECOMMENDATIONS[result.katman3_hastalik.hastalik_tr] || 
-                                    'Bu hastalık için özel bir tedavi önerisi bulunamadı. Lütfen tarım uzmanına danışın.';
-                }
-            } else if (result.katman3_hastalik.durum === 'saglikli') {
-                tedaviOnerisi = TREATMENT_RECOMMENDATIONS['Healthy'];
-            }
-
-            // 3. PostgreSQL veritabanına kaydet (Graceful Degradation ile)
+            // 2. PostgreSQL veritabanına ilişkisel olarak kaydet (Graceful Degradation ile)
             try {
                 if (db.isDbConnected === false) {
                     throw new Error('Veritabanı bağlantısı aktif değil (Offline Mode).');
                 }
 
+                // 2.1. Kullanıcıyı bul (Yoksa misafir olarak otomatik oluştur)
+                let userRes = await db.query('SELECT id FROM users WHERE uuid = $1', [userUuid]);
+                let userId;
+                if (userRes.rowCount === 0) {
+                    const guestRes = await db.query(
+                        "INSERT INTO users (uuid, name, user_type) VALUES ($1, 'Misafir', 'guest') RETURNING id",
+                        [userUuid]
+                    );
+                    userId = guestRes.rows[0].id;
+                } else {
+                    userId = userRes.rows[0].id;
+                }
+
+                // 2.2. Bitkiyi bul
+                const plantKey = result.katman2_bitki.tur.replace(" ", "_");
+                const plantRes = await db.query('SELECT id, name_tr FROM plants WHERE key = $1', [plantKey]);
+                if (plantRes.rowCount === 0) {
+                    throw new Error(`Bitki veri tabanında tanımlı değil: ${plantKey}`);
+                }
+                const plantId = plantRes.rows[0].id;
+
+                // 2.3. Hastalığı ve Tedaviyi bul
+                let diseaseId = null;
+                const diseaseKey = result.katman3_hastalik.hastalik; // Örn: 'Leaf Scorch', 'Healthy'
+                
+                if (result.katman3_hastalik.durum === 'tespit_edildi' && diseaseKey) {
+                    const diseaseRes = await db.query(
+                        'SELECT id, name_tr, treatment_recommendation FROM diseases WHERE plant_id = $1 AND key = $2',
+                        [plantId, diseaseKey]
+                    );
+                    if (diseaseRes.rowCount > 0) {
+                        diseaseId = diseaseRes.rows[0].id;
+                        tedaviOnerisi = diseaseRes.rows[0].treatment_recommendation;
+                    }
+                } else if (result.katman3_hastalik.durum === 'saglikli') {
+                    const diseaseRes = await db.query(
+                        'SELECT id, name_tr, treatment_recommendation FROM diseases WHERE plant_id = $1 AND key = \'Healthy\'',
+                        [plantId]
+                    );
+                    if (diseaseRes.rowCount > 0) {
+                        diseaseId = diseaseRes.rows[0].id;
+                        tedaviOnerisi = diseaseRes.rows[0].treatment_recommendation;
+                    }
+                }
+
+                // 2.4. Teşhis kaydını ekle
                 const insertQuery = `
                     INSERT INTO diagnoses (
-                        yaprak_guven, bitki_adi, bitki_adi_tr, bitki_guven,
-                        hastalik_durum, hastalik_adi, hastalik_adi_tr, hastalik_guven,
+                        user_id, yaprak_guven, plant_id, bitki_guven,
+                        disease_id, hastalik_guven, hastalik_durum,
                         resim_yolu, tedavi_onerisi
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                     RETURNING id;
                 `;
 
                 const insertParams = [
+                    userId,
                     result.katman1_yaprak.confidence,
-                    result.katman2_bitki.tur,
-                    result.katman2_bitki.tur_tr,
+                    plantId,
                     result.katman2_bitki.confidence,
-                    result.katman3_hastalik.durum,
-                    result.katman3_hastalik.hastalik,
-                    result.katman3_hastalik.hastalik_tr,
+                    diseaseId,
                     result.katman3_hastalik.confidence,
+                    result.katman3_hastalik.durum,
                     filename,
                     tedaviOnerisi
                 ];
@@ -129,11 +143,14 @@ async function diagnose(req, res) {
                 dbSaved = true;
                 logger.success(`📝 Teşhis veritabanına başarıyla kaydedildi. Kayıt ID: ${dbId}`);
             } catch (dbError) {
-                // HATA TOLERANSI (Fail-Safe): Veritabanı hatasında resmi silmiyoruz. 
-                // İstemciye tahmin sonucunu başarıyla dönüyoruz, veritabanı kaydının başarısız olduğunu işaretliyoruz.
                 logger.warn(`⚠️ Veritabanı bağlantısı yok veya kayıt başarısız oldu. Teşhis çevrimdışı modda (offline-mode) tamamlanıyor. Hata: ${dbError.message}`);
                 dbId = null;
                 dbSaved = false;
+                
+                // Offline durumunda statik yedek metin ataması
+                tedaviOnerisi = result.katman3_hastalik.durum === 'saglikli' 
+                    ? 'Bitkiniz sağlıklı görünüyor. Mevcut bakım düzenine devam edin.'
+                    : 'Çevrimdışı modda detaylı tedavi önerisi verilemiyor. Lütfen veri tabanını kontrol edin.';
             }
 
         } catch (fileError) {
@@ -156,9 +173,10 @@ async function diagnose(req, res) {
 
 /**
  * GET /api/history
- * Veritabanından kaydedilmiş tüm teşhis geçmişini tarihe göre yeniden eskiye getirir.
+ * Veritabanından belirli bir kullanıcıya ait kaydedilmiş teşhis geçmişini döndürür.
  */
 async function getHistory(req, res) {
+    const { uuid } = req.query;
     try {
         if (db.isDbConnected === false) {
             return res.status(503).json({
@@ -167,8 +185,26 @@ async function getHistory(req, res) {
             });
         }
 
-        const queryText = 'SELECT * FROM diagnoses ORDER BY tarih DESC';
-        const dbResult = await db.query(queryText);
+        if (!uuid) {
+            return res.status(400).json({
+                basarili: false,
+                hata: 'Geçmişi sorgulamak için kullanıcı UUID kodu (uuid) parametre olarak gönderilmelidir.'
+            });
+        }
+
+        const queryText = `
+            SELECT d.id, d.yaprak_guven, d.bitki_guven, d.hastalik_guven, 
+                   d.hastalik_durum, d.resim_yolu, d.tarih, d.tedavi_onerisi,
+                   p.key AS bitki_adi, p.name_tr AS bitki_adi_tr,
+                   dis.key AS hastalik_adi, dis.name_tr AS hastalik_adi_tr
+            FROM diagnoses d
+            JOIN users u ON d.user_id = u.id
+            JOIN plants p ON d.plant_id = p.id
+            LEFT JOIN diseases dis ON d.disease_id = dis.id
+            WHERE u.uuid = $1
+            ORDER BY d.tarih DESC;
+        `;
+        const dbResult = await db.query(queryText, [uuid]);
         
         return res.json({
             basarili: true,
@@ -246,6 +282,73 @@ async function deleteHistory(req, res) {
 }
 
 /**
+ * DELETE /api/history
+ * Kullanıcıya ait tüm teşhis geçmişini ve ilişkili resimleri siler.
+ */
+async function deleteAllHistory(req, res) {
+    const { uuid } = req.query;
+    try {
+        if (db.isDbConnected === false) {
+            return res.status(503).json({
+                basarili: false,
+                hata: 'Veritabanı şu anda çevrimdışı. Kayıt silme işlemi gerçekleştirilemiyor.'
+            });
+        }
+
+        if (!uuid) {
+            return res.status(400).json({
+                basarili: false,
+                hata: 'Geçmişi silmek için kullanıcı UUID kodu (uuid) parametre olarak gönderilmelidir.'
+            });
+        }
+
+        // 1. Kullanıcıyı bul
+        const userRes = await db.query('SELECT id FROM users WHERE uuid = $1', [uuid]);
+        if (userRes.rowCount === 0) {
+            return res.status(404).json({
+                basarili: false,
+                hata: 'Kullanıcı bulunamadı.'
+            });
+        }
+        const userId = userRes.rows[0].id;
+
+        // 2. Tüm teşhis resim yollarını al
+        const findQuery = 'SELECT resim_yolu FROM diagnoses WHERE user_id = $1';
+        const findRes = await db.query(findQuery, [userId]);
+        const files = findRes.rows.map(r => r.resim_yolu).filter(Boolean);
+
+        // 3. Veritabanından tüm kayıtları sil
+        const deleteQuery = 'DELETE FROM diagnoses WHERE user_id = $1';
+        await db.query(deleteQuery, [userId]);
+        logger.success(`❌ Tüm teşhis kayıtları veritabanından silindi. Kullanıcı ID: ${userId}`);
+
+        // 4. Görselleri diskten temizle
+        for (const filename of files) {
+            const filePath = path.join(__dirname, '..', '..', 'uploads', filename);
+            try {
+                await fs.promises.access(filePath);
+                await fs.promises.unlink(filePath);
+                logger.success(`🗑️ Teşhis resmi diskten silindi: ${filename}`);
+            } catch (fileErr) {
+                logger.warn(`⚠️ Dosya silinemedi veya zaten yok: ${filename} | Hata: ${fileErr.message}`);
+            }
+        }
+
+        return res.json({
+            basarili: true,
+            mesaj: 'Tüm teşhis kayıtları ve ilişkili görseller başarıyla temizlendi.'
+        });
+    } catch (error) {
+        logger.error(`Kullanıcı geçmişi temizlenirken hata oluştu (UUID: ${uuid})`, error);
+        return res.status(500).json({
+            basarili: false,
+            hata: 'Tüm kayıtlar silinirken bir hata oluştu.',
+            detay: error.message
+        });
+    }
+}
+
+/**
  * GET /api/labels
  * Desteklenen bitki türlerini döndürür.
  */
@@ -256,7 +359,7 @@ function getLabels(req, res) {
             basarili: true,
             toplamTur: labels.length,
             bitkiTurleri: labels,
-            not: 'Hastalık tespiti aktif: apple, cherry, corn, grape, potato, tomato'
+            not: 'Hastalık tespiti aktif: apple, bell pepper, cherry, corn, grape, peach, potato, strawberry, tomato'
         });
     } catch (error) {
         logger.error('Bitki listesi alınırken hata oluştu', error);
@@ -271,5 +374,6 @@ module.exports = {
     diagnose,
     getHistory,
     deleteHistory,
+    deleteAllHistory,
     getLabels
 };

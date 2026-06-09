@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Platform, StatusBar, Dimensions, Image, Alert, Linking, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Platform, StatusBar, Dimensions, Image, Linking, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
@@ -8,12 +8,15 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { Colors } from '../theme/colors';
 import { API_BASE } from '../config';
+import { useAuth } from '../context/AuthContext';
+import CustomAlert from '../components/CustomAlert';
 
 const { width: screenWidth } = Dimensions.get('window');
 
 
 export default function CameraScreen({ navigation }) {
     const { theme } = useTheme();
+    const { user } = useAuth();
     const isDark = theme === 'dark';
     const colors = isDark ? Colors.dark : Colors.light;
 
@@ -26,6 +29,31 @@ export default function CameraScreen({ navigation }) {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [analyzeStep, setAnalyzeStep] = useState(''); // Hangi katmanda olduğunu gösterir
     const insets = useSafeAreaInsets();
+
+    // Özel Onay Modalı State'leri
+    const [customAlertVisible, setCustomAlertVisible] = useState(false);
+    const [customAlertConfig, setCustomAlertConfig] = useState({
+        title: '',
+        message: '',
+        confirmText: '',
+        cancelText: '',
+        isDestructive: false,
+        showCancel: true,
+        onConfirm: () => {},
+    });
+
+    const showCustomAlert = (title, message, onConfirm, isDestructive = false, confirmText = 'Onayla', cancelText = 'Vazgeç', showCancel = true) => {
+        setCustomAlertConfig({
+            title,
+            message,
+            onConfirm,
+            isDestructive,
+            confirmText,
+            cancelText,
+            showCancel
+        });
+        setCustomAlertVisible(true);
+    };
 
     const cameraRef = useRef(null);
     const isMountedRef = useRef(true);
@@ -45,13 +73,17 @@ export default function CameraScreen({ navigation }) {
     // İzin isteme fonksiyonu - tek seferlik deneyin ardından Ayarlara Git moduna geç
     const handlePermissionRequest = useCallback(async () => {
         if (hasAsked || (permission && !permission.canAskAgain)) {
-            Alert.alert(
+            showCustomAlert(
                 "Kamera Erişimi Kapalı",
                 "Kamera iznini daha önce reddetmiş görünüyorsunuz. Bitkilerinizi tanıyabilmemiz için lütfen uygulama ayarlarından kamera erişimini açın.",
-                [
-                    { text: "Vazgeç", style: "cancel" },
-                    { text: "Ayarlara Git", onPress: () => Linking.openSettings() }
-                ]
+                () => {
+                    setCustomAlertVisible(false);
+                    Linking.openSettings();
+                },
+                false,
+                "Ayarlara Git",
+                "Vazgeç",
+                true
             );
         } else {
             setHasAsked(true);
@@ -68,7 +100,7 @@ export default function CameraScreen({ navigation }) {
     }, []);
 
     // Fotoğrafı backend'e gönder ve 3 katmanlı AI pipeline sonucu al
-    const analyzePhoto = useCallback(async (uri) => {
+    const analyzePhoto = useCallback(async (uri, isFromGallery = false) => {
         // Varsa önceki yarım kalmış isteği iptal et
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
@@ -92,7 +124,7 @@ export default function CameraScreen({ navigation }) {
             //   3. iOS'a dokunulmaz — iOS zaten vizörle aynı kadrajı kaydeder.
             let processed;
 
-            if (Platform.OS === 'android') {
+            if (Platform.OS === 'android' && !isFromGallery) {
                 // ADIM 1: Resize — EXIF rotation otomatik uygulanır, boyutlar normalize olur
                 const resized = await ImageManipulator.manipulateAsync(
                     uri,
@@ -126,7 +158,7 @@ export default function CameraScreen({ navigation }) {
                     { format: ImageManipulator.SaveFormat.JPEG, compress: 0.85 }
                 );
             } else {
-                // iOS: Sadece resize — kadraj zaten doğru
+                // iOS veya Galeriden Seçilen Görsel: Sadece resize — kadraj zaten doğru
                 processed = await ImageManipulator.manipulateAsync(
                     uri,
                     [{ resize: { width: 1024 } }],
@@ -155,6 +187,9 @@ export default function CameraScreen({ navigation }) {
 
             const response = await fetch(`${API_BASE}/api/diagnose`, {
                 method: 'POST',
+                headers: {
+                    'X-User-UUID': user?.uuid || 'default_guest_uuid'
+                },
                 body: formData,
                 signal
             });
@@ -169,13 +204,25 @@ export default function CameraScreen({ navigation }) {
                     });
                 } else {
                     if (result.dusuk_confidence) {
-                        Alert.alert(
+                        showCustomAlert(
                             "Emin Değilim",
                             "Bitki türü yeterince güvenilir tespit edilemedi. Lütfen yaprağı daha yakından ve net bir şekilde çekin.",
-                            [{ text: "Tekrar Dene" }]
+                            () => setCustomAlertVisible(false),
+                            false,
+                            "Tekrar Dene",
+                            "",
+                            false
                         );
                     } else {
-                        Alert.alert("Hata", result.hata || "Analiz yapılamadı.");
+                        showCustomAlert(
+                            "Hata",
+                            result.hata || "Analiz yapılamadı.",
+                            () => setCustomAlertVisible(false),
+                            false,
+                            "Tamam",
+                            "",
+                            false
+                        );
                     }
                 }
             }
@@ -184,11 +231,16 @@ export default function CameraScreen({ navigation }) {
                 console.log("Analiz işlemi kullanıcı tarafından iptal edildi.");
                 return;
             }
-            console.error("API Hatası:", error);
+            console.log("API Hatası:", error);
             if (isMountedRef.current) {
-                Alert.alert(
+                showCustomAlert(
                     "Bağlantı Hatası",
-                    "Sunucuya bağlanılamadı. Lütfen backend sunucusunun çalıştığından emin olun."
+                    "Sunucuya bağlanılamadı. Lütfen backend sunucusunun çalıştığından emin olun.",
+                    () => setCustomAlertVisible(false),
+                    false,
+                    "Tamam",
+                    "",
+                    false
                 );
             }
         } finally {
@@ -197,18 +249,19 @@ export default function CameraScreen({ navigation }) {
                 setAnalyzeStep('');
             }
         }
-    }, [navigation]);
+    }, [navigation, user]);
 
     // Galeriden fotoğraf seçimi
     const pickImage = useCallback(async () => {
         let result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ['images'],
-            allowsEditing: false, // YOLO zaten yaprağı bulacağı için crop gereksiz
+            allowsEditing: true, // Kullanıcı yaprağı kare içine alabilsin
+            aspect: [1, 1],      // 1:1 kare kırpma oranı
             quality: 0.9,
         });
 
         if (!result.canceled) {
-            await analyzePhoto(result.assets[0].uri);
+            await analyzePhoto(result.assets[0].uri, true);
         }
     }, [analyzePhoto]);
 
@@ -221,9 +274,9 @@ export default function CameraScreen({ navigation }) {
                     base64: false
                 });
 
-                await analyzePhoto(photo.uri);
+                await analyzePhoto(photo.uri, false);
             } catch (error) {
-                console.error("Fotoğraf çekilirken hata:", error);
+                console.log("Fotoğraf çekilirken hata:", error);
             }
         }
     }, [analyzePhoto]);
@@ -372,7 +425,17 @@ export default function CameraScreen({ navigation }) {
                             </TouchableOpacity>
 
                             {/* İpuçları Tuşu */}
-                            <TouchableOpacity style={styles.actionSideItem} onPress={() => Alert.alert("İpucu", "Yaprak fotoğrafını çekerken:\n\n• Bitkiye çok yaklaşmayın\n• Işığın arkadan gelmemesine dikkat edin\n• Yaprağın tam görünmesini sağlayın\n\nYapay zeka yaprağı otomatik bulup analiz edecektir.")}>
+                            <TouchableOpacity style={styles.actionSideItem} onPress={() => {
+                                showCustomAlert(
+                                    "İpucu",
+                                    "Yaprak fotoğrafını çekerken:\n\n• Bitkiye çok yaklaşmayın\n• Işığın arkadan gelmemesine dikkat edin\n• Yaprağın tam görünmesini sağlayın\n\nYapay zeka yaprağı otomatik bulup analiz edecektir.",
+                                    () => setCustomAlertVisible(false),
+                                    false,
+                                    "Anladım",
+                                    "",
+                                    false
+                                );
+                            }}>
                                 <View style={styles.actionSubCircle}>
                                     <MaterialCommunityIcons name="help" size={24} color={isDark ? '#FFF' : '#1A1A1A'} />
                                 </View>
@@ -410,6 +473,19 @@ export default function CameraScreen({ navigation }) {
                     </View>
                 </View>
             )}
+
+            {/* ÖZEL ONAY MODALI */}
+            <CustomAlert
+                visible={customAlertVisible}
+                title={customAlertConfig.title}
+                message={customAlertConfig.message}
+                confirmText={customAlertConfig.confirmText}
+                cancelText={customAlertConfig.cancelText}
+                isDestructive={customAlertConfig.isDestructive}
+                showCancel={customAlertConfig.showCancel}
+                onConfirm={customAlertConfig.onConfirm}
+                onCancel={() => setCustomAlertVisible(false)}
+            />
         </View>
     );
 }

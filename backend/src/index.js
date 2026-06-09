@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const aiService = require('./services/aiService');
 const diagnoseRoutes = require('./routes/diagnoseRoutes');
+const authRoutes = require('./routes/authRoutes');
 const initializeDatabase = require('./config/dbInit');
 const db = require('./config/db');
 const logger = require('./utils/logger');
@@ -26,6 +27,7 @@ app.use('/uploads', express.static(uploadsDir));
 
 // ─── Routes ─────────────────────────────────────────────
 app.use('/api', diagnoseRoutes);
+app.use('/api/auth', authRoutes);
 
 // ─── Zenginleştirilmiş Sağlık Kontrolü (Fail-Safe Destekli) ────
 app.get('/api/health', (req, res) => {

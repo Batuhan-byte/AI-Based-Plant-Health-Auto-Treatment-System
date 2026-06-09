@@ -15,4 +15,7 @@ router.get('/history', diagnoseController.getHistory);
 // DELETE /api/history/:id - Teşhis kaydını sil
 router.delete('/history/:id', diagnoseController.deleteHistory);
 
+// DELETE /api/history - Tüm teşhis geçmişini sil
+router.delete('/history', diagnoseController.deleteAllHistory);
+
 module.exports = router;

@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import {
     View, Text, SafeAreaView, ScrollView, TouchableOpacity,
-    ActivityIndicator, Alert,
+    ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Video, ResizeMode } from 'expo-av';
@@ -12,15 +12,18 @@ import { useTheme } from '../theme/ThemeContext';
 import { API_BASE } from '../config';
 import { useWeather } from '../hooks/useWeather';
 import getDynamicStyles, { SCROLL_WIDTH, GAP } from '../styles/myPlantsStyles';
+import { useAuth } from '../context/AuthContext';
 
 // Alt bileşenler
 import ActionIcon from '../components/myplants/ActionIcon';
 import PlantItem from '../components/myplants/PlantItem';
 import DiagnosisDetailModal from '../components/myplants/DiagnosisDetailModal';
 import DonationModal from '../components/myplants/DonationModal';
+import CustomAlert from '../components/CustomAlert';
 
 export default function MyPlantsScreen({ navigation }) {
     const { theme, toggleTheme } = useTheme();
+    const { user } = useAuth();
     const isDark = theme === 'dark';
     const colors = isDark ? Colors.dark : Colors.light;
     const styles = useMemo(() => getDynamicStyles(colors), [colors]);
@@ -40,13 +43,38 @@ export default function MyPlantsScreen({ navigation }) {
     const [modalVisible, setModalVisible]     = useState(false);
     const [donationVisible, setDonationVisible] = useState(false);
 
-    // Ekrana her odaklandığında geçmişi PostgreSQL'den çek
+    // Özel Onay Modalı State'leri
+    const [customAlertVisible, setCustomAlertVisible] = useState(false);
+    const [customAlertConfig, setCustomAlertConfig] = useState({
+        title: '',
+        message: '',
+        confirmText: '',
+        cancelText: '',
+        isDestructive: false,
+        showCancel: true,
+        onConfirm: () => {},
+    });
+
+    const showCustomAlert = (title, message, onConfirm, isDestructive = false, confirmText = 'Onayla', cancelText = 'Vazgeç', showCancel = true) => {
+        setCustomAlertConfig({
+            title,
+            message,
+            onConfirm,
+            isDestructive,
+            confirmText,
+            cancelText,
+            showCancel
+        });
+        setCustomAlertVisible(true);
+    };
+
     useFocusEffect(
         useCallback(() => {
             let isActive = true;
             const fetchHistory = async () => {
+                if (!user?.uuid) return;
                 try {
-                    const response = await fetch(`${API_BASE}/api/history`);
+                    const response = await fetch(`${API_BASE}/api/history?uuid=${user.uuid}`);
                     const data = await response.json();
                     if (data.basarili && isActive) {
                         setHistory(data.gecmis || []);
@@ -59,61 +87,92 @@ export default function MyPlantsScreen({ navigation }) {
             };
             fetchHistory();
             return () => { isActive = false; };
-        }, [])
+        }, [user?.uuid])
     );
 
     // Kayıt silme
     const handleDelete = (id) => {
-        Alert.alert(
+        showCustomAlert(
             'Kaydı Sil',
             'Bu teşhis kaydını ve ilişkili fotoğrafı kalıcı olarak silmek istediğinizden emin misiniz?',
-            [
-                { text: 'Vazgeç', style: 'cancel' },
-                {
-                    text: 'Evet, Sil',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            const response = await fetch(`${API_BASE}/api/history/${id}`, { method: 'DELETE' });
-                            const data = await response.json();
-                            if (data.basarili) {
-                                setModalVisible(false);
-                                setSelectedItem(null);
-                                setHistory(prev => prev.filter(item => item.id !== id));
-                                Alert.alert('Başarılı', 'Teşhis kaydı başarıyla silindi.');
-                            } else {
-                                Alert.alert('Hata', 'Kayıt silinemedi: ' + data.hata);
-                            }
-                        } catch (_err) {
-                            Alert.alert('Hata', 'Sunucu bağlantı hatası oluştu.');
-                        }
-                    },
-                },
-            ]
+            async () => {
+                setCustomAlertVisible(false);
+                try {
+                    const response = await fetch(`${API_BASE}/api/history/${id}`, { method: 'DELETE' });
+                    const data = await response.json();
+                    if (data.basarili) {
+                        setModalVisible(false);
+                        setSelectedItem(null);
+                        setHistory(prev => prev.filter(item => item.id !== id));
+                        // Başarılı uyarısı için CustomAlert'i tek butonlu olarak göster
+                        setTimeout(() => {
+                            showCustomAlert(
+                                "Başarılı",
+                                "Teşhis kaydı başarıyla silindi.",
+                                () => setCustomAlertVisible(false),
+                                false,
+                                "Tamam",
+                                "",
+                                false
+                            );
+                        }, 500);
+                    } else {
+                        setTimeout(() => {
+                            showCustomAlert("Hata", "Kayıt silinemedi: " + data.hata, () => setCustomAlertVisible(false), false, "Tamam", "", false);
+                        }, 500);
+                    }
+                } catch (_err) {
+                    setTimeout(() => {
+                        showCustomAlert("Hata", "Sunucu bağlantı hatası oluştu.", () => setCustomAlertVisible(false), false, "Tamam", "", false);
+                    }, 500);
+                }
+            },
+            true,
+            'Evet, Sil',
+            'Vazgeç',
+            true
         );
     };
 
     // Aksiyon handler'ları
-    const handleSmartIrrigation = () => Alert.alert(
-        'Akıllı Sulama & Tedavi',
-        'Otonom tedavi cihazınızla bağlantı kuruluyor...\nSulama ve organik tedavi döngüsü başarıyla başlatıldı! 💦🌿',
-        [{ text: 'Harika!' }]
-    );
+    const handleSmartIrrigation = () => {
+        showCustomAlert(
+            'Akıllı Sulama & Tedavi',
+            'Otonom tedavi cihazınızla bağlantı kuruluyor...\nSulama ve organik tedavi döngüsü başarıyla başlatıldı! 💦🌿',
+            () => setCustomAlertVisible(false),
+            false,
+            'Harika!',
+            '',
+            false
+        );
+    };
 
-    const handlePlantGuide = () => Alert.alert(
-        'Bitki Bakım Rehberi',
-        'Desteklenen bitkilerin (Domates, Patates, Mısır, Kiraz, Elma, Üzüm) bakım tüyoları ve hastalık mücadele yöntemleri yükleniyor...',
-        [
-            { text: 'Geçmiş Teşhislere Git', onPress: () => navigation.navigate('Logs') },
-            { text: 'Kapat', style: 'cancel' },
-        ]
-    );
+    const handlePlantGuide = () => {
+        showCustomAlert(
+            'Bitki Bakım Rehberi',
+            'Desteklenen bitkilerin (Domates, Patates, Mısır, Kiraz, Elma, Üzüm) bakım tüyoları ve hastalık mücadele yöntemleri yükleniyor...',
+            () => {
+                setCustomAlertVisible(false);
+                navigation.navigate('Logs');
+            },
+            false,
+            'Geçmiş Teşhislere Git',
+            'Kapat',
+            true
+        );
+    };
 
-    const handleAIBotanist = () => Alert.alert(
-        'AI Botanist Chatbot',
-        'Yapay zeka tarım danışmanınız hazır! Sormak istediğiniz soruları buraya iletebilirsiniz.',
-        [{ text: 'Sohbete Başla' }]
-    );
+    const handleAIBotanist = () => {
+        showCustomAlert(
+            'AI Botanist Chatbot',
+            'Yapay zeka tarım danışmanınız hazır! Sormak istediğiniz soruları buraya iletebilirsiniz.',
+            () => setCustomAlertVisible(false),
+            false,
+            'Sohbete Başla',
+            '',
+            false
+        );
+    };
 
     const handleScroll = (event) => {
         const scrollPosition = event.nativeEvent.contentOffset.x;
@@ -302,6 +361,18 @@ export default function MyPlantsScreen({ navigation }) {
                 colors={colors}
             />
 
+            {/* ÖZEL ONAY MODALI */}
+            <CustomAlert
+                visible={customAlertVisible}
+                title={customAlertConfig.title}
+                message={customAlertConfig.message}
+                confirmText={customAlertConfig.confirmText}
+                cancelText={customAlertConfig.cancelText}
+                isDestructive={customAlertConfig.isDestructive}
+                showCancel={customAlertConfig.showCancel}
+                onConfirm={customAlertConfig.onConfirm}
+                onCancel={() => setCustomAlertVisible(false)}
+            />
         </SafeAreaView>
     );
 }

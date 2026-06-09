@@ -10,7 +10,6 @@ import {
     Image, 
     TouchableOpacity, 
     ActivityIndicator, 
-    Alert, 
     Modal, 
     ScrollView 
 } from 'react-native';
@@ -18,12 +17,15 @@ import { useTheme } from '../theme/ThemeContext';
 import { Colors } from '../theme/colors';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { useAuth } from '../context/AuthContext';
 
 import { API_BASE } from '../config';
 import DiagnosisDetailModal from '../components/myplants/DiagnosisDetailModal';
+import CustomAlert from '../components/CustomAlert';
 
 export default function SearchScreen() {
     const { theme } = useTheme();
+    const { user } = useAuth();
     const isDark = theme === 'dark';
     const colors = isDark ? Colors.dark : Colors.light;
 
@@ -33,14 +35,40 @@ export default function SearchScreen() {
     const [selectedItem, setSelectedItem] = useState(null);
     const [modalVisible, setModalVisible] = useState(false);
 
+    // Özel Onay Modalı State'leri
+    const [customAlertVisible, setCustomAlertVisible] = useState(false);
+    const [customAlertConfig, setCustomAlertConfig] = useState({
+        title: '',
+        message: '',
+        confirmText: '',
+        cancelText: '',
+        isDestructive: false,
+        showCancel: true,
+        onConfirm: () => {},
+    });
+
+    const showCustomAlert = (title, message, onConfirm, isDestructive = false, confirmText = 'Onayla', cancelText = 'Vazgeç', showCancel = true) => {
+        setCustomAlertConfig({
+            title,
+            message,
+            onConfirm,
+            isDestructive,
+            confirmText,
+            cancelText,
+            showCancel
+        });
+        setCustomAlertVisible(true);
+    };
+
     // Dinamik stiller
     const styles = useMemo(() => getDynamicStyles(colors), [colors]);
 
     // Geçmiş verilerini çek
     const fetchHistory = useCallback(async (showLoadingIndicator = true) => {
+        if (!user?.uuid) return;
         if (showLoadingIndicator) setLoading(true);
         try {
-            const response = await fetch(`${API_BASE}/api/history`);
+            const response = await fetch(`${API_BASE}/api/history?uuid=${user.uuid}`);
             const data = await response.json();
             if (data.basarili) {
                 setHistory(data.gecmis || []);
@@ -48,12 +76,12 @@ export default function SearchScreen() {
                 console.warn('Geçmiş yüklenemedi:', data.hata);
             }
         } catch (error) {
-            console.error('Geçmiş API hatası:', error);
+            console.log('Geçmiş API hatası:', error);
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
-    }, []);
+    }, [user?.uuid]);
 
     // Her sayfa odaklandığında (Logs sekmesine tıklandığında) verileri yenile (Gelişmiş UX)
     useFocusEffect(
@@ -68,37 +96,93 @@ export default function SearchScreen() {
         fetchHistory(false);
     };
 
+    // Tüm geçmişi temizleme
+    const handleDeleteAll = () => {
+        if (history.length === 0) return;
+        showCustomAlert(
+            "Geçmişi Temizle",
+            "Tüm teşhis geçmişinizi ve kayıtlı fotoğraflarınızı kalıcı olarak silmek istediğinizden emin misiniz?",
+            async () => {
+                setCustomAlertVisible(false);
+                try {
+                    const response = await fetch(`${API_BASE}/api/history?uuid=${user?.uuid}`, {
+                        method: 'DELETE'
+                    });
+                    const data = await response.json();
+                    if (data.basarili) {
+                        setHistory([]);
+                        // Başarılı uyarısı için CustomAlert'i tek butonlu olarak göster
+                        setTimeout(() => {
+                            showCustomAlert(
+                                "Başarılı",
+                                "Tüm teşhis geçmişiniz başarıyla temizlendi.",
+                                () => setCustomAlertVisible(false),
+                                false,
+                                "Tamam",
+                                "",
+                                false
+                            );
+                        }, 500);
+                    } else {
+                        setTimeout(() => {
+                            showCustomAlert("Hata", "Geçmiş temizlenemedi: " + data.hata, () => setCustomAlertVisible(false), false, "Tamam", "", false);
+                        }, 500);
+                    }
+                } catch (error) {
+                    setTimeout(() => {
+                        showCustomAlert("Hata", "Sunucu bağlantı hatası oluştu.", () => setCustomAlertVisible(false), false, "Tamam", "", false);
+                    }, 500);
+                }
+            },
+            true,
+            "Evet, Tümünü Sil",
+            "Vazgeç",
+            true
+        );
+    };
+
     // Kayıt silme işlemi
     const handleDelete = (id) => {
-        Alert.alert(
+        showCustomAlert(
             "Kaydı Sil",
             "Bu teşhis kaydını ve ilişkili fotoğrafı kalıcı olarak silmek istediğinizden emin misiniz?",
-            [
-                { text: "Vazgeç", style: "cancel" },
-                { 
-                    text: "Evet, Sil", 
-                    style: "destructive",
-                    onPress: async () => {
-                        try {
-                            const response = await fetch(`${API_BASE}/api/history/${id}`, {
-                                method: 'DELETE'
-                            });
-                            const data = await response.json();
-                            if (data.basarili) {
-                                setModalVisible(false);
-                                setSelectedItem(null);
-                                // Listeyi lokal olarak güncelle
-                                setHistory(prev => prev.filter(item => item.id !== id));
-                                Alert.alert("Başarılı", "Teşhis kaydı başarıyla silindi.");
-                            } else {
-                                Alert.alert("Hata", "Kayıt silinemedi: " + data.hata);
-                            }
-                        } catch (error) {
-                            Alert.alert("Hata", "Sunucu bağlantı hatası oluştu.");
-                        }
+            async () => {
+                setCustomAlertVisible(false);
+                try {
+                    const response = await fetch(`${API_BASE}/api/history/${id}`, {
+                        method: 'DELETE'
+                    });
+                    const data = await response.json();
+                    if (data.basarili) {
+                        setModalVisible(false);
+                        setSelectedItem(null);
+                        setHistory(prev => prev.filter(item => item.id !== id));
+                        setTimeout(() => {
+                            showCustomAlert(
+                                "Başarılı",
+                                "Teşhis kaydı başarıyla silindi.",
+                                () => setCustomAlertVisible(false),
+                                false,
+                                "Tamam",
+                                "",
+                                false
+                            );
+                        }, 500);
+                    } else {
+                        setTimeout(() => {
+                            showCustomAlert("Hata", "Kayıt silinemedi: " + data.hata, () => setCustomAlertVisible(false), false, "Tamam", "", false);
+                        }, 500);
                     }
+                } catch (error) {
+                    setTimeout(() => {
+                        showCustomAlert("Hata", "Sunucu bağlantı hatası oluştu.", () => setCustomAlertVisible(false), false, "Tamam", "", false);
+                    }, 500);
                 }
-            ]
+            },
+            true,
+            "Evet, Sil",
+            "Vazgeç",
+            true
         );
     };
 
@@ -169,8 +253,21 @@ export default function SearchScreen() {
             
             {/* Header */}
             <View style={styles.header}>
-                <Text style={styles.headerTitle}>Teşhis Geçmişi</Text>
-                <Text style={styles.headerSubtitle}>Kayıtlı Analizlerim</Text>
+                <View style={styles.headerContentRow}>
+                    <View>
+                        <Text style={styles.headerTitle}>Teşhis Geçmişi</Text>
+                        <Text style={styles.headerSubtitle}>Kayıtlı Analizlerim</Text>
+                    </View>
+                    {history.length > 0 && (
+                        <TouchableOpacity 
+                            style={styles.deleteAllButton} 
+                            onPress={handleDeleteAll}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={styles.deleteAllText}>Hepsini Sil</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
             </View>
 
             {/* İçerik */}
@@ -208,6 +305,19 @@ export default function SearchScreen() {
                 styles={styles}
                 colors={colors}
             />
+
+            {/* ÖZEL ONAY MODALI */}
+            <CustomAlert
+                visible={customAlertVisible}
+                title={customAlertConfig.title}
+                message={customAlertConfig.message}
+                confirmText={customAlertConfig.confirmText}
+                cancelText={customAlertConfig.cancelText}
+                isDestructive={customAlertConfig.isDestructive}
+                showCancel={customAlertConfig.showCancel}
+                onConfirm={customAlertConfig.onConfirm}
+                onCancel={() => setCustomAlertVisible(false)}
+            />
         </SafeAreaView>
     );
 }
@@ -224,6 +334,24 @@ const getDynamicStyles = (colors) => StyleSheet.create({
         paddingBottom: 8,
         borderBottomWidth: 1,
         borderBottomColor: colors.navInactive + '20',
+    },
+    headerContentRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    deleteAllButton: {
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 10,
+        backgroundColor: 'rgba(255, 59, 48, 0.08)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    deleteAllText: {
+        color: '#FF3B30',
+        fontSize: 13,
+        fontWeight: 'bold',
     },
     headerTitle: {
         fontSize: 28,

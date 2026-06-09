@@ -6,7 +6,7 @@ const logger = require('../utils/logger');
 // ─── Model Dosya Yolları (Proje kök dizininden) ──────────
 const PROJECT_ROOT = path.join(__dirname, '..', '..', '..');
 const YOLO_MODEL_PATH = path.join(PROJECT_ROOT, 'ai_model', 'active_models', 'yolo_leaf_best.pt');
-const PLANT_MODEL_PATH = path.join(PROJECT_ROOT, 'ai_model', 'active_models', 'plant_mobilenetv3large_best.h5');
+const PLANT_MODEL_PATH = path.join(PROJECT_ROOT, 'ai_model', 'active_models', 'plant_mobilenetv3large_best.keras');
 const CLASS_NAMES_PATH = path.join(PROJECT_ROOT, 'ai_model', 'active_models', 'class_names.txt');
 const DISEASE_MODELS_DIR = path.join(PROJECT_ROOT, 'ai_model', 'active_models', 'disease_models');
 const PIPELINE_SCRIPT = path.join(__dirname, 'predict_pipeline.py');
@@ -21,8 +21,28 @@ const DAEMON_HEALTH_POLL_INTERVAL_MS = 1000;
 // Türkçe bitki isimleri haritası
 const BITKI_TR = {
     apple: 'Elma', cherry: 'Kiraz', corn: 'Mısır', grape: 'Üzüm',
-    peach: 'Şeftali', pepper_bell: 'Biber', potato: 'Patates',
+    peach: 'Şeftali', pepper_bell: 'Biber', bell_pepper: 'Biber', potato: 'Patates',
     squash: 'Kabak', strawberry: 'Çilek', tea: 'Çay', tomato: 'Domates'
+};
+
+// Türkçe hastalık isimleri haritası
+const HASTALIK_TR = {
+    'Healthy': 'Sağlıklı',
+    'Apple Scab': 'Elma Karalekesi',
+    'Black Rot': 'Siyah Çürüklük',
+    'Cedar Apple Rust': 'Sedir-Elma Pası',
+    'Powdery Mildew': 'Külleme',
+    'Cercospora Leaf Spot': 'Cercospora Yaprak Lekesi',
+    'Common Rust': 'Pas Hastalığı',
+    'Northern Leaf Blight': 'Kuzey Yaprak Yanıklığı',
+    'Esca (Black Measles)': 'Esca (Siyah Kızamık)',
+    'Leaf Blight': 'Yaprak Yanıklığı',
+    'Bacterial Spot': 'Bakteriyel Leke',
+    'Early Blight': 'Erken Yanıklık',
+    'Late Blight': 'Geç Yanıklık',
+    'Septoria Leaf Spot': 'Septoria Yaprak Lekesi',
+    'Yellow Leaf Curl Virus': 'Sarı Yaprak Kıvırma Virüsü',
+    'Leaf Scorch': 'Yaprak Yanıklığı'
 };
 
 let modelsReady = false;
@@ -38,7 +58,7 @@ async function loadModel() {
         // Model dosyalarını kontrol et
         const requiredFiles = [
             { path: YOLO_MODEL_PATH, name: 'YOLO Model (yolo_leaf_best.pt)' },
-            { path: PLANT_MODEL_PATH, name: 'Bitki Sınıflandırma (plant_mobilenetv3large_best.h5)' },
+            { path: PLANT_MODEL_PATH, name: 'Bitki Sınıflandırma (plant_mobilenetv3large_best.keras)' },
             { path: CLASS_NAMES_PATH, name: 'Sınıf İsimleri (class_names.txt)' },
             { path: PIPELINE_SCRIPT, name: 'Pipeline Script (predict_pipeline.py)' }
         ];
@@ -277,6 +297,23 @@ function performPredictRequest(imageBuffer) {
                     const k1 = parsedResult.katman1_yaprak;
                     const k2 = parsedResult.katman2_bitki;
                     const k3 = parsedResult.katman3_hastalik;
+
+                    // Türkçe Çevirileri Yap (Node.js tarafında)
+                    const getPlantTr = (key) => {
+                        if (!key) return 'Bilinmeyen Bitki';
+                        const normalized = key.replace(' ', '_');
+                        return BITKI_TR[normalized] || key.charAt(0).toUpperCase() + key.slice(1);
+                    };
+                    const getDiseaseTr = (key) => {
+                        if (!key) return 'Sağlıklı';
+                        return HASTALIK_TR[key] || key;
+                    };
+
+                    k2.tur_tr = getPlantTr(k2.tur);
+                    (k2.top3 || []).forEach(t => { t.tur_tr = getPlantTr(t.tur); });
+
+                    k3.hastalik_tr = getDiseaseTr(k3.hastalik);
+                    (k3.top3 || []).forEach(t => { t.hastalik_tr = getDiseaseTr(t.hastalik); });
 
                     logger.success(`  📍 Katman 1: Yaprak bulundu (güven: %${(k1.confidence * 100).toFixed(1)})`);
                     logger.success(`  🌿 Katman 2: ${k2.tur_tr} (güven: %${(k2.confidence * 100).toFixed(1)})`);

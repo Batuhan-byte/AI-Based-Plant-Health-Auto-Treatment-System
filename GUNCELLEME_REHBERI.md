@@ -93,7 +93,7 @@ Bu sayede bilgisayarınızın IP adresi değiştiğinde sadece bu dosyadan günc
 
 Ana proje dizininde `ai_model/active_models/` klasörü altında şu dosyaların eksiksiz yer aldığından emin olun:
 -   `yolo_leaf_best.pt` *(Katman 1 - Yaprak tespiti)*
--   `plant_mobilenetv3large_best.h5` *(Katman 2 - Bitki sınıflandırma)*
+-   `plant_mobilenetv3large_best.keras` *(Katman 2 - Bitki sınıflandırma)*
 -   `class_names.txt` *(Desteklenen bitki sınıfları)*
 -   `disease_models/` *(Katman 3 - Bitki türlerine özel `.keras` hastalık modelleri)*
 
